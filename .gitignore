@@ -1,4 +1,28 @@
-/.zephyr_cache/
+/build/
 /build*/
+/.zephyr_cache/
+/.vscode/
+
 *.pyc
 __pycache__/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# Ninja
+.ninja*
+*.ninja
+
+# Generated
+*.elf
+*.hex
+*.bin
+*.map
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

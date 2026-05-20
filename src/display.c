@@ -20,7 +20,8 @@ static bool display_ready;
 
 static const char *mode_name(enum app_mode mode)
 {
-	switch (mode) {
+	switch (mode)
+	{
 	case APP_MODE_BLE:
 		return "BLE";
 	case APP_MODE_USB:
@@ -34,22 +35,26 @@ static const char *mode_name(enum app_mode mode)
 
 int app_display_init(void)
 {
-	if (gpio_is_ready_dt(&screen_bl)) {
+	if (gpio_is_ready_dt(&screen_bl))
+	{
 		(void)gpio_pin_configure_dt(&screen_bl, GPIO_OUTPUT_ACTIVE);
 	}
 
-	if (!device_is_ready(display_dev)) {
+	if (!device_is_ready(display_dev))
+	{
 		LOG_WRN("Display is not ready");
 		return -ENODEV;
 	}
 
 	if (display_set_pixel_format(display_dev, PIXEL_FORMAT_MONO10) != 0 &&
-	    display_set_pixel_format(display_dev, PIXEL_FORMAT_MONO01) != 0) {
+		display_set_pixel_format(display_dev, PIXEL_FORMAT_MONO01) != 0)
+	{
 		LOG_WRN("Display pixel format not supported");
 		return -ENOTSUP;
 	}
 
-	if (cfb_framebuffer_init(display_dev) != 0) {
+	if (cfb_framebuffer_init(display_dev) != 0)
+	{
 		LOG_WRN("Display framebuffer init failed");
 		return -EIO;
 	}
@@ -63,11 +68,12 @@ int app_display_init(void)
 }
 
 void display_update_status(enum app_mode mode, int battery_percent,
-			   bool connected, bool numlock)
+						   bool connected, bool numlock)
 {
 	char line[32];
 
-	if (!display_ready) {
+	if (!display_ready)
+	{
 		return;
 	}
 
@@ -76,12 +82,15 @@ void display_update_status(enum app_mode mode, int battery_percent,
 	(void)cfb_print(display_dev, line, 0, 0);
 
 	snprintf(line, sizeof(line), "MODE:%s %s", mode_name(mode),
-		 connected ? "LINK" : "----");
+			 connected ? "LINK" : "----");
 	(void)cfb_print(display_dev, line, 0, 16);
 
-	if (battery_percent >= 0) {
+	if (battery_percent >= 0)
+	{
 		snprintf(line, sizeof(line), "BAT:%3d%%", battery_percent);
-	} else {
+	}
+	else
+	{
 		snprintf(line, sizeof(line), "BAT:---%%");
 	}
 	(void)cfb_print(display_dev, line, 0, 32);
