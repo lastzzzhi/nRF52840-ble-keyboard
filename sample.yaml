@@ -1,0 +1,12 @@
+sample:
+  name: AI BLE Keyboard
+tests:
+  sample.ai_ble_keyboard:
+    build_only: true
+    tags:
+      - bluetooth
+      - usb
+      - hid
+      - keyboard
+    platform_allow:
+      - ai_ble_keyboard/nrf52840

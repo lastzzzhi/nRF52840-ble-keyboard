@@ -1,0 +1,5 @@
+# Device tree binding vendor prefix registry.
+#
+# <vendor-prefix><TAB><Full name of vendor>
+
+me	Local AI BLE Keyboard project

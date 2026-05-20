@@ -1,0 +1,1271 @@
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D
+原理图 蓝牙小键盘
+创建日期 2026-02-03
+更新日期 2026-03-16
+绘制
+单主控蓝牙小键盘_等赵老师layout审阅
+版本 尺寸 页    1    共    1
+V1.0 A4 尚硅谷
+板子 一个主控的小键盘 图页 原理图
+["Esc"],
+[{y:0.25},"Num Lock","/","*","-"],
+["7
+Home","8
+-","9
+PgUp",{h:2},"+"],
+["4
+-","5","6
+-"],
+["1
+End","2
+-","3
+PgDn",{h:2},"Enter"],
+[{w:2},"0
+Ins",".
+Del"]
+VBUS
+VBUS
+SCREW1 SCREW2
+11 22
+3 344
+CN1
+GND
+BAT_ADC
+ROW0
+COL0
+GND GND RGB_VCC_OUT
+ROW1
+COL1
+GND RGB_VCC_OUT
+ROW1
+COL2
+GND RGB_VCC_OUT
+ROW1
+COL3
+GND RGB_VCC_OUT
+ROW2
+COL0 COL1
+RGB_VCC_OUTGND
+ROW2
+COL2
+RGB_VCC_OUTGND
+ROW2
+COL1
+RGB_VCC_OUTGND
+ROW3
+COL2
+RGB_VCC_OUTGND
+ROW3
+COL3
+RGB_VCC_OUTGND
+ROW3
+COL1
+RGB_VCC_OUTGND
+ROW4
+COL2
+RGB_VCC_OUTGND
+ROW4
+COL0
+RGB_VCC_OUTGND
+ROW5
+COL1
+RGB_VCC_OUTGND
+ROW5
+COL3
+RGB_VCC_OUTGND
+ROW5
+GND RGB_VCC_OUT
+COL0
+ROW4
+COL3
+GND
+EC11AEC11B
+ROW3
+GND RGB_VCC_OUT
+COL0
+SCK
+SWD
+GND
+GND
+锂电池管理\系统电源唤醒
+屏幕接口
+["Esc"],
+[{y:0.25},"Num Lock","/","*","-"],
+["home","up","pageup"],
+["left","5","right",{h:2},"+"],
+["end","down","pagedown"],
+[{w:2},"ins","del",{h:2},"Enter"]
+RGB_VCC_OUT
+RGB_1
+RGB_1 RGB_2
+RGB_3
+RGB_4
+RGB_4
+RGB_3
+RGB_2
+RGB_DATA
+RGB_VCC_OUT
+ROW1
+SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB3SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB1 SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB2 SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB4
+SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB5 SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB6 SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB7
+SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB8 SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB9 SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB10 SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB11
+SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB12 SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB13 SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB14
+SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB15 SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB16 SW7
+凯华轴座+0807反贴灯
+VDD
+DOUTDIN
+GND
+K0 K1
+背贴灯+轴体_2
+CBB17
+C4 100nF C5 100nF
+C6
+100nF
+C7
+100nF
+C14
+100nF
+C15
+100nF
+C16
+100nF
+C18
+100nF
+C19
+100nF
+C20
+100nF
+C21
+100nF
+C26
+100nF
+C27
+100nF
+C28
+100nF
+C35
+100nF
+C36
+100nF
+C37
+100nF
+C8
+1uF
+C25
+1uF
+C24
+1uF
+C10
+1uF
+D20
+1N4148W
+D1 D2 D3 D4
+D5
+1N4148W
+D6
+1N4148W
+D7
+1N4148W
+D8
+1N4148W
+D9
+1N4148W
+D10
+1N4148W
+D11
+1N4148W
+D12
+1N4148W
+D13
+1N4148W
+D14
+1N4148W
+D17
+1N4148W
+D18
+1N4148W
+D19
+1N4148W
+A
+B
+C
+D
+E
+6 7
+SW3
+EC11E15244G1
+GND A1B12VBUS A4B9CC1 A5DP1 A6DN1 A7SBU1 A8CC2 B5DP2 B6DN2 B7SBU2 B8VBUS B4A9GND B1A12SHELL 1SHELL 2SHELL 3SHELL 4
+USB1
+TYPE-C16PIN
+C9 100nF
+C11
+100nF
+C29
+100nF
+TYPE-C接口
+一堆轴和灯
+灯带电源控制
+电量检测电路
+LDO_3V3
+烧录排针
+NRF52840
+旋钮
+三模切换
+VBAT
+BAT_ADC_EN
+P1.11 1
+P1.10 2
+P0.03 3
+AI4 4
+GND 5
+P1.13 6
+AI0 7
+AI5 8
+AI7 9
+AI6 10
+XL111 P0.2612 XL213 P0.0614 AI315 P0.0816 P1.0917 AI218 VCC19 P1220 GND21 P0.0722 VDH23 GND24 DCH25
+RST26 VBS27 P1528 D-29 P1730 D+31 P0.2032 P0.1333 P0.2234 P0.2435 P1.0036 SWD37 P1.0238 SWC39 P1.0440 NF141 P1.0642 NF243U36
+E73-2G4M08S1C
+SCK
+SWD
+DP
+DN
+VBUS
+EC11B
+BAT_ADC_EN
+RGB_PWR_EN
+BAT_ADC
+ROW0
+ROW1
+ROW2
+ROW4
+COL0
+COL1
+EC11A
+3V3
+3V3
+3V3
+3V3
+ROW5
+ROW3
+Q1
+Q4
+Q3
+COL2
+Q2
+ES3139KW
+RGB_PWR_EN
+GND
+GND
+GND
+GND
+3V3 3V3
+MODE
+3V3
+1
+2
+3
+4
+5 6
+U1
+SK-13D07-4
+6
+5
+43
+2
+1
+U39
+USBLC6-2SC6
+DP
+DN
+R23 0Ω
+R24 0Ω
+DN
+DP
+X1
+32.768kHz
+3V3
+3V3
+C2
+100nF
+C31 100nF
+C1
+100nF
+C40 100nF
+GND
+SCREEN_BLK
+SCREEN_BLK
+SCREEN_RES
+SCREEN_RES
+SCREEN_DC
+SCREEN_DC
+SCREEN_SDA
+SCREEN_SDA
+SCREEN_CS
+SCREEN_CS
+MODE
+COL3
+SCREEN_SCL
+SCREEN_SCL
+RGB_DATA
+11
+22
+33
+44
+55
+66
+77
+88
+P3
+2.54-1*8P母环保
+GND
+GND
+C12
+12pF
+C13
+12pF
+GND
+GND
+GNDU40 1uH
+SYS_POWER
+SYS_POWER
+SYS_POWER
+87
+6
+5
+4
+3
+2
+1SW4
+SK-22D02-G040
+VBAT
+VBAT
+VBAT VBAT
+GND
+GND
+GND
+MANUAL_WAKE
+MANUAL_WAKE
+GND
+GND
+IP5305T_WAKEUP
+IP5305T_WAKEUP
+VIN1
+LED12
+LED23
+LED34 KEY 5BAT 6SW 7VOUT 8EP 9
+U2
+IP5306-I2C
+IP5305T_I2C_SCK
+IP5305T_I2C_SDA
+VOUT 5
+NC 4EN3
+GND2
+VIN1
+U37
+TPSPX3819M5-L-3-3
+3V3
+GND GND
+IP5305T_I2C_SDA
+IP5305T_I2C_SCK
+R1
+10kΩ
+R5 1kΩ
+R18 1kΩ
+R3
+100kΩ
+R6
+100kΩ
+R8
+100kΩ
+R10
+100kΩ
+R16 100kΩ
+R17 100kΩ
+R22 100kΩ
+R9
+1kΩ
+R19 1kΩ
+R20 1kΩ
+R21 1kΩ
+#A1
+B2
+#CLR3
+GND4 Q 5CEXT 6REXT/CEXT 7VCC 8
+U41
+SN74LVC1G123DCTR
+R2
+10kΩ
+R14
+10kΩ
+R15
+10kΩ
+R28 10kΩ
+R31 10kΩ
+R11
+5.1kΩ
+R12
+5.1kΩ
+R130
+4.7kΩ
+R13
+4.7kΩ
+C32
+22uF
+C38
+22uF
+R26
+10kΩ
+R4
+680kΩ
+C22
+1uF
+C17 1uF
+C3
+22uF
+C23
+22uF
+R29 2Ω
+C39 10uF
+C33 10uF
+C34
+22uF
+R7
+500mΩ
+12
+34
+SW2
+TSC02-TDW0EH3.5
+1 12 23 3
+H1
+PZ254V-11-03P
+LED2
+LTST-C230TGKT
+LED1
+LTST-C230TGKT
+C30
+220uF
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U6
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U5
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U8
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U7
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U10
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U9
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U12
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U11
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U14
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U13
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U16
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U15
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U18
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U17
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U20
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U19
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U22
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U21
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U24
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U23
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U26
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U25
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U28
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U27
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U30
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U29
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U32
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U31
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U34
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U33
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U4
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U3
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1
+1
+1
+2
+2
+3
+3
+4
+4
+5
+5
+6
+6
+A A
+B B
+C C
+D D审阅
+绘制
+版本
+创建日期
+物料编码
+页 共
+原理图 更新日期
+尺寸
+图页
+嘉立创EDAV1.0 A4
+单主控蓝牙小键盘_等赵老师layout
+1
+2025-12-11
+2025-12-11背贴灯+轴体_2
+1
+P1
+1 2
+U38
+CPG151101S11-16
+VDD1
+DOUT2 GND 3DIN 4
+U35
+WS2812B-MINI-V3J
+VDD DIN
+DOUT GND
+K0K1

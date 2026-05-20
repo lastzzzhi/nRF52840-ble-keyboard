@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: Apache-2.0
+
+description: GPIO controls for the AI BLE Keyboard board.
+
+compatible: "me,ai-ble-keyboard-controls"
+
+include: base.yaml
+
+properties:
+  mode-gpios:
+    type: phandle-array
+    required: true
+  encoder-a-gpios:
+    type: phandle-array
+    required: true
+  encoder-b-gpios:
+    type: phandle-array
+    required: true
+  battery-adc-enable-gpios:
+    type: phandle-array
+    required: true
+  rgb-power-enable-gpios:
+    type: phandle-array
+    required: true
+  ip5306-wakeup-gpios:
+    type: phandle-array
+    required: true
+  screen-bl-gpios:
+    type: phandle-array
+    required: true

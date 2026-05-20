@@ -1,0 +1,167 @@
+/dts-v1/;
+
+#include <nordic/nrf52840_qiaa.dtsi>
+#include <zephyr/dt-bindings/adc/nrf-saadc.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/led/led.h>
+#include "ai_ble_keyboard-pinctrl.dtsi"
+
+/ {
+	model = "AI BLE Keyboard";
+	compatible = "me,ai-ble-keyboard";
+
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,code-partition = &slot0_partition;
+		zephyr,display = &ssd1306;
+	};
+
+	aliases {
+		led-strip = &led_strip;
+	};
+
+	zephyr,user {
+		io-channels = <&adc 7>;
+	};
+
+	kbd_matrix: keyboard-matrix {
+		compatible = "gpio-kbd-matrix";
+		row-gpios = <&gpio0 15 GPIO_ACTIVE_LOW>,
+			    <&gpio0 7 GPIO_ACTIVE_LOW>,
+			    <&gpio0 12 GPIO_ACTIVE_LOW>,
+			    <&gpio0 4 GPIO_ACTIVE_LOW>,
+			    <&gpio1 9 GPIO_ACTIVE_LOW>,
+			    <&gpio0 8 GPIO_ACTIVE_LOW>;
+		col-gpios = <&gpio0 5 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>,
+			    <&gpio0 6 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>,
+			    <&gpio0 26 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>,
+			    <&gpio0 30 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+	};
+
+	board_controls: board-controls {
+		compatible = "me,ai-ble-keyboard-controls";
+		mode-gpios = <&gpio0 29 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
+		encoder-a-gpios = <&gpio0 10 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+		encoder-b-gpios = <&gpio1 6 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+		battery-adc-enable-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;
+		rgb-power-enable-gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+		ip5306-wakeup-gpios = <&gpio0 22 GPIO_ACTIVE_HIGH>;
+		screen-bl-gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		boot_partition: partition@0 {
+			label = "mcuboot";
+			reg = <0x00000000 DT_SIZE_K(48)>;
+		};
+
+		slot0_partition: partition@c000 {
+			label = "image-0";
+			reg = <0x0000c000 DT_SIZE_K(472)>;
+		};
+
+		slot1_partition: partition@82000 {
+			label = "image-1";
+			reg = <0x00082000 DT_SIZE_K(472)>;
+		};
+
+		storage_partition: partition@f8000 {
+			label = "storage";
+			reg = <0x000f8000 DT_SIZE_K(32)>;
+		};
+	};
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&gpiote {
+	status = "okay";
+};
+
+&uicr {
+	nfct-pins-as-gpios;
+};
+
+&usbd {
+	status = "okay";
+};
+
+&adc {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel@7 {
+		reg = <7>;
+		zephyr,gain = "ADC_GAIN_1_6";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+		zephyr,input-positive = <NRF_SAADC_AIN7>;
+	};
+};
+
+&i2c0 {
+	compatible = "nordic,nrf-twim";
+	status = "okay";
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-1 = <&i2c0_sleep>;
+	pinctrl-names = "default", "sleep";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+};
+
+&spi1 {
+	compatible = "nordic,nrf-spim";
+	status = "okay";
+	pinctrl-0 = <&spi1_default>;
+	pinctrl-1 = <&spi1_sleep>;
+	pinctrl-names = "default", "sleep";
+	cs-gpios = <&gpio0 2 GPIO_ACTIVE_LOW>;
+
+	ssd1306: ssd1306@0 {
+		compatible = "solomon,ssd1306fb";
+		reg = <0>;
+		spi-max-frequency = <8000000>;
+		width = <128>;
+		height = <64>;
+		segment-offset = <0>;
+		page-offset = <0>;
+		display-offset = <0>;
+		multiplex-ratio = <63>;
+		segment-remap;
+		com-invdir;
+		prechargep = <0x22>;
+		data-cmd-gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;
+	};
+};
+
+&spi2 {
+	compatible = "nordic,nrf-spim";
+	status = "okay";
+	pinctrl-0 = <&spi2_default>;
+	pinctrl-1 = <&spi2_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	led_strip: ws2812@0 {
+		compatible = "worldsemi,ws2812-spi";
+		reg = <0>;
+		spi-max-frequency = <4000000>;
+		chain-length = <24>;
+		color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
+		spi-one-frame = <0x70>;
+		spi-zero-frame = <0x40>;
+	};
+};

@@ -1,0 +1,17 @@
+identifier: ai_ble_keyboard/nrf52840
+name: AI BLE Keyboard
+type: mcu
+arch: arm
+ram: 256
+flash: 1024
+toolchain:
+  - zephyr
+supported:
+  - bluetooth
+  - usb_device
+  - gpio
+  - adc
+  - i2c
+  - spi
+  - display
+  - led_strip
