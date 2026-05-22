@@ -14,7 +14,7 @@ LOG_MODULE_REGISTER(power, LOG_LEVEL_INF);
 #define CTRL_NODE DT_NODELABEL(board_controls)
 #define USER_NODE DT_PATH(zephyr_user)
 #define IP5306_I2C_ADDR 0x75
-#define BATTERY_DIVIDER_NUM 780
+#define BATTERY_DIVIDER_NUM 200
 #define BATTERY_DIVIDER_DEN 100
 #define BATTERY_EMPTY_MV 3300
 #define BATTERY_FULL_MV 4200
@@ -172,7 +172,7 @@ int power_get_battery_percent(void)
 	}
 
 	last_battery_percent = percent;
-	return percent;
+	return last_battery_percent;
 }
 
 void power_set_rgb_enabled(bool enabled)

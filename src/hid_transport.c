@@ -34,6 +34,9 @@ LOG_MODULE_REGISTER(hid_transport, LOG_LEVEL_INF);
 #define OUTPUT_REP_KEYS_REF_ID 1
 #define OUTPUT_REPORT_MAX_LEN 1
 #define CONSUMER_REPORT_SIZE 1
+#define BLE_FAST_ADV_TIMEOUT_MS 30000
+#define BLE_ADV_SLOW_INT_MIN 0x0640
+#define BLE_ADV_SLOW_INT_MAX 0x0780
 
 BT_HIDS_DEF(hids_obj, OUTPUT_REPORT_MAX_LEN, HID_KEYBOARD_REPORT_SIZE);
 
@@ -49,9 +52,14 @@ static enum app_mode current_mode = APP_MODE_BLE;
 static enum usb_dc_status_code usb_status;
 static bool bt_ready;
 static bool adv_active;
+static bool adv_slow;
 static bool usb_ready;
 static bool ble_hids_ready;
 static bool ble_enable_started;
+static bool force_repair_next;
+static int64_t adv_fast_until_ms;
+
+static int ble_send_consumer_bits(uint8_t bits);
 
 static const uint8_t report_map[] = {
 	/* Keyboard report, ID 1. */
@@ -96,14 +104,29 @@ static uint8_t consumer_usage_to_bits(uint16_t usage)
 	}
 }
 
-static void advertising_start(void)
+static bool ble_has_connection(void)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(conn_mode); i++) {
+		if (conn_mode[i].conn != NULL) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static void advertising_start(bool slow)
 {
 	int err;
 	const struct bt_le_adv_param *adv_param =
-		BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONN,
-				BT_GAP_ADV_FAST_INT_MIN_2,
-				BT_GAP_ADV_FAST_INT_MAX_2,
-				NULL);
+		slow ? BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONN,
+				       BLE_ADV_SLOW_INT_MIN,
+				       BLE_ADV_SLOW_INT_MAX,
+				       NULL) :
+		       BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONN,
+				       BT_GAP_ADV_FAST_INT_MIN_2,
+				       BT_GAP_ADV_FAST_INT_MAX_2,
+				       NULL);
 
 	if (!bt_ready || current_mode != APP_MODE_BLE || adv_active) {
 		return;
@@ -121,7 +144,8 @@ static void advertising_start(void)
 	}
 
 	adv_active = true;
-	LOG_INF("Bluetooth advertising started");
+	adv_slow = slow;
+	LOG_INF("Bluetooth %s advertising started", slow ? "slow" : "fast");
 }
 
 static void advertising_stop(void)
@@ -132,18 +156,59 @@ static void advertising_stop(void)
 
 	if (bt_le_adv_stop() == 0) {
 		adv_active = false;
+		adv_slow = false;
+	}
+}
+
+static void advertising_restart(bool slow)
+{
+	advertising_stop();
+	advertising_start(slow);
+}
+
+static void advertising_begin_fast_window(void)
+{
+	adv_fast_until_ms = k_uptime_get() + BLE_FAST_ADV_TIMEOUT_MS;
+	advertising_restart(false);
+}
+
+static void disconnect_ble_connections(void)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(conn_mode); i++) {
+		if (conn_mode[i].conn != NULL) {
+			(void)bt_conn_disconnect(conn_mode[i].conn,
+						 BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+		}
 	}
 }
 
 static void connected(struct bt_conn *conn, uint8_t err)
 {
+	bt_security_t security = BT_SECURITY_L2;
+
 	if (err) {
 		LOG_WRN("Bluetooth connection failed: 0x%02x", err);
 		return;
 	}
 
+	if (current_mode != APP_MODE_BLE) {
+		LOG_INF("Rejecting BLE connection outside BLE mode");
+		(void)bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+		return;
+	}
+
 	LOG_INF("Bluetooth connected");
 	adv_active = false;
+
+	if (force_repair_next) {
+		LOG_INF("Forcing Bluetooth re-pair on this connection");
+		security |= BT_SECURITY_FORCE_PAIR;
+	}
+
+	err = bt_conn_set_security(conn, security);
+	if (err) {
+		LOG_WRN("Bluetooth security request failed: %d", err);
+	}
 
 	err = bt_hids_connected(&hids_obj, conn);
 	if (err) {
@@ -172,19 +237,87 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		}
 	}
 
-	advertising_start();
+	if (current_mode == APP_MODE_BLE) {
+		advertising_begin_fast_window();
+	}
 }
 
 static void security_changed(struct bt_conn *conn, bt_security_t level,
 			     enum bt_security_err err)
 {
-	LOG_INF("Bluetooth security level %u err %d", level, err);
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+	if (!err) {
+		LOG_INF("Bluetooth security changed: %s level %u", addr, level);
+		return;
+	}
+
+	LOG_WRN("Bluetooth security failed: %s level %u err %d %s",
+		addr, level, err, bt_security_err_to_str(err));
+
+	if (err == BT_SECURITY_ERR_PIN_OR_KEY_MISSING ||
+	    err == BT_SECURITY_ERR_AUTH_FAIL) {
+		LOG_WRN("Deleting failed bond for %s and forcing re-pair next time", addr);
+		force_repair_next = true;
+		(void)bt_unpair(BT_ID_DEFAULT, bt_conn_get_dst(conn));
+		(void)bt_conn_disconnect(conn, BT_HCI_ERR_AUTH_FAIL);
+	}
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected = connected,
 	.disconnected = disconnected,
 	.security_changed = security_changed,
+};
+
+static void auth_pairing_confirm(struct bt_conn *conn)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+	int err;
+
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+	LOG_INF("Bluetooth pairing confirm: %s", addr);
+	err = bt_conn_auth_pairing_confirm(conn);
+	if (err) {
+		LOG_WRN("Bluetooth pairing confirm failed: %d", err);
+	}
+}
+
+static void auth_cancel(struct bt_conn *conn)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+	LOG_WRN("Bluetooth pairing cancelled: %s", addr);
+}
+
+static void pairing_complete(struct bt_conn *conn, bool bonded)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+	LOG_INF("Bluetooth pairing complete: %s bonded=%d", addr, bonded);
+	force_repair_next = false;
+}
+
+static void pairing_failed(struct bt_conn *conn, enum bt_security_err reason)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+	LOG_WRN("Bluetooth pairing failed: %s reason %d %s",
+		addr, reason, bt_security_err_to_str(reason));
+}
+
+static struct bt_conn_auth_cb conn_auth_callbacks = {
+	.pairing_confirm = auth_pairing_confirm,
+	.cancel = auth_cancel,
+};
+
+static struct bt_conn_auth_info_cb conn_auth_info_callbacks = {
+	.pairing_complete = pairing_complete,
+	.pairing_failed = pairing_failed,
 };
 
 static void hids_outp_rep_handler(struct bt_hids_rep *rep,
@@ -268,7 +401,7 @@ static void bt_ready_cb(int err)
 		(void)settings_load();
 	}
 
-	advertising_start();
+	advertising_begin_fast_window();
 }
 
 static void usb_status_cb(enum usb_dc_status_code status, const uint8_t *param)
@@ -333,11 +466,23 @@ static int ble_transport_start(void)
 	int err;
 
 	if (bt_ready || ble_enable_started) {
-		advertising_start();
+		advertising_begin_fast_window();
 		return 0;
 	}
 
 	if (!ble_hids_ready) {
+		err = bt_conn_auth_cb_register(&conn_auth_callbacks);
+		if (err && err != -EALREADY) {
+			LOG_ERR("Bluetooth auth callback register failed: %d", err);
+			return err;
+		}
+
+		err = bt_conn_auth_info_cb_register(&conn_auth_info_callbacks);
+		if (err && err != -EALREADY) {
+			LOG_ERR("Bluetooth auth info callback register failed: %d", err);
+			return err;
+		}
+
 		err = ble_hids_init();
 		if (err) {
 			return err;
@@ -392,6 +537,18 @@ void hid_transport_set_mode(enum app_mode mode)
 		(void)ble_transport_start();
 	} else {
 		advertising_stop();
+		disconnect_ble_connections();
+	}
+}
+
+void hid_transport_tick(void)
+{
+	if (current_mode != APP_MODE_BLE || !bt_ready || ble_has_connection()) {
+		return;
+	}
+
+	if (adv_active && !adv_slow && k_uptime_get() >= adv_fast_until_ms) {
+		advertising_restart(true);
 	}
 }
 
@@ -411,13 +568,7 @@ bool hid_transport_connected(void)
 		return usb_ready;
 	}
 
-	for (size_t i = 0; i < ARRAY_SIZE(conn_mode); i++) {
-		if (conn_mode[i].conn != NULL) {
-			return true;
-		}
-	}
-
-	return false;
+	return ble_has_connection();
 }
 
 static int ble_send_keyboard(const struct hid_keyboard_report *report)
@@ -492,6 +643,32 @@ int hid_transport_send_keyboard(const struct hid_keyboard_report *report)
 	data[1] = report->reserved;
 	memcpy(&data[2], report->keys, sizeof(report->keys));
 	return usb_send_report(INPUT_REP_KEYS_REF_ID, data, sizeof(data));
+}
+
+int hid_transport_release_all(void)
+{
+	struct hid_keyboard_report empty_keyboard = { 0 };
+	uint8_t empty_consumer = 0;
+	int err;
+
+	if (current_mode == APP_MODE_OFF) {
+		return 0;
+	}
+
+	err = hid_transport_send_keyboard(&empty_keyboard);
+	if (current_mode == APP_MODE_BLE) {
+		int consumer_err = ble_send_consumer_bits(0);
+
+		return err ? err : consumer_err;
+	}
+
+	{
+		int consumer_err = usb_send_report(INPUT_REP_CONSUMER_REF_ID,
+						   &empty_consumer,
+						   sizeof(empty_consumer));
+
+		return err ? err : consumer_err;
+	}
 }
 
 static int ble_send_consumer_bits(uint8_t bits)

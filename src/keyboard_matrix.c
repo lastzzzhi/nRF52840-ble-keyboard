@@ -33,6 +33,29 @@ static const struct gpio_dt_spec cols[KEYBOARD_MATRIX_COLS] = {
 static bool debounced[KEYBOARD_MATRIX_ROWS][KEYBOARD_MATRIX_COLS];
 static bool last_raw[KEYBOARD_MATRIX_ROWS][KEYBOARD_MATRIX_COLS];
 static uint8_t stable_count[KEYBOARD_MATRIX_ROWS][KEYBOARD_MATRIX_COLS];
+static struct gpio_callback wakeup_callbacks[KEYBOARD_MATRIX_COLS];
+static keyboard_matrix_wakeup_cb_t wakeup_cb;
+static bool wakeup_armed;
+
+static void set_all_rows(bool active)
+{
+	for (size_t r = 0; r < ARRAY_SIZE(rows); r++) {
+		(void)gpio_pin_set_dt(&rows[r], active ? 1 : 0);
+	}
+}
+
+static void column_wakeup_handler(const struct device *dev,
+				  struct gpio_callback *cb,
+				  uint32_t pins)
+{
+	ARG_UNUSED(dev);
+	ARG_UNUSED(cb);
+	ARG_UNUSED(pins);
+
+	if (wakeup_cb != NULL) {
+		wakeup_cb();
+	}
+}
 
 int keyboard_matrix_init(void)
 {
@@ -62,6 +85,14 @@ int keyboard_matrix_init(void)
 			LOG_ERR("Failed to configure column %u: %d", c, err);
 			return err;
 		}
+
+		gpio_init_callback(&wakeup_callbacks[c], column_wakeup_handler,
+				   BIT(cols[c].pin));
+		err = gpio_add_callback(cols[c].port, &wakeup_callbacks[c]);
+		if (err) {
+			LOG_ERR("Failed to add column %u wake callback: %d", c, err);
+			return err;
+		}
 	}
 
 	memset(debounced, 0, sizeof(debounced));
@@ -74,9 +105,11 @@ int keyboard_matrix_scan(struct keyboard_event *events, size_t max_events)
 {
 	size_t count = 0;
 
-	for (size_t r = 0; r < ARRAY_SIZE(rows); r++) {
-		(void)gpio_pin_set_dt(&rows[r], 0);
+	if (wakeup_armed) {
+		keyboard_matrix_wakeup_disarm();
 	}
+
+	set_all_rows(false);
 
 	for (size_t r = 0; r < ARRAY_SIZE(rows); r++) {
 		(void)gpio_pin_set_dt(&rows[r], 1);
@@ -111,4 +144,46 @@ int keyboard_matrix_scan(struct keyboard_event *events, size_t max_events)
 	}
 
 	return (int)count;
+}
+
+int keyboard_matrix_wakeup_arm(keyboard_matrix_wakeup_cb_t cb)
+{
+	int err;
+
+	if (wakeup_armed) {
+		return 0;
+	}
+
+	wakeup_cb = cb;
+	set_all_rows(true);
+	wakeup_armed = true;
+
+	for (size_t c = 0; c < ARRAY_SIZE(cols); c++) {
+		err = gpio_pin_interrupt_configure_dt(&cols[c],
+						      GPIO_INT_EDGE_TO_ACTIVE);
+		if (err) {
+			keyboard_matrix_wakeup_disarm();
+			LOG_WRN("Failed to arm column %u wake interrupt: %d", c, err);
+			return err;
+		}
+	}
+
+	LOG_DBG("Keyboard wakeup armed");
+	return 0;
+}
+
+void keyboard_matrix_wakeup_disarm(void)
+{
+	if (!wakeup_armed) {
+		return;
+	}
+
+	for (size_t c = 0; c < ARRAY_SIZE(cols); c++) {
+		(void)gpio_pin_interrupt_configure_dt(&cols[c], GPIO_INT_DISABLE);
+	}
+
+	set_all_rows(false);
+	wakeup_armed = false;
+	wakeup_cb = NULL;
+	LOG_DBG("Keyboard wakeup disarmed");
 }

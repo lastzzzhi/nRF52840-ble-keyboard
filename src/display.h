@@ -7,7 +7,7 @@
 
 int app_display_init(void);
 void display_update_status(enum app_mode mode, int battery_percent,
-			   bool connected, bool numlock);
+			   int battery_mv, bool connected, bool numlock);
 void app_display_tick(void);
 
 #endif

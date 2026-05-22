@@ -14,7 +14,11 @@ struct keyboard_event {
 	bool pressed;
 };
 
+typedef void (*keyboard_matrix_wakeup_cb_t)(void);
+
 int keyboard_matrix_init(void);
 int keyboard_matrix_scan(struct keyboard_event *events, size_t max_events);
+int keyboard_matrix_wakeup_arm(keyboard_matrix_wakeup_cb_t cb);
+void keyboard_matrix_wakeup_disarm(void);
 
 #endif
