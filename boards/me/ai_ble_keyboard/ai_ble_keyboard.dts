@@ -4,6 +4,7 @@
 #include <zephyr/dt-bindings/adc/nrf-saadc.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/dt-bindings/led/led.h>
+#include <zephyr/dt-bindings/mipi_dbi/mipi_dbi.h>
 #include "ai_ble_keyboard-pinctrl.dtsi"
 
 / {
@@ -14,7 +15,7 @@
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
 		zephyr,code-partition = &slot0_partition;
-		zephyr,display = &ssd1306;
+		zephyr,display = &st7789v;
 	};
 
 	aliases {
@@ -47,7 +48,7 @@
 		battery-adc-enable-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;
 		rgb-power-enable-gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
 		ip5306-wakeup-gpios = <&gpio0 22 GPIO_ACTIVE_HIGH>;
-		screen-bl-gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+		screen-bl-gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;
 	};
 };
 
@@ -110,6 +111,7 @@
 		zephyr,reference = "ADC_REF_INTERNAL";
 		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
 		zephyr,input-positive = <NRF_SAADC_AIN7>;
+		zephyr,resolution = <12>;
 	};
 };
 
@@ -129,22 +131,45 @@
 	pinctrl-1 = <&spi1_sleep>;
 	pinctrl-names = "default", "sleep";
 	cs-gpios = <&gpio0 2 GPIO_ACTIVE_LOW>;
+};
 
-	ssd1306: ssd1306@0 {
-		compatible = "solomon,ssd1306fb";
-		reg = <0>;
-		spi-max-frequency = <8000000>;
-		width = <128>;
-		height = <64>;
-		segment-offset = <0>;
-		page-offset = <0>;
-		display-offset = <0>;
-		multiplex-ratio = <63>;
-		segment-remap;
-		com-invdir;
-		prechargep = <0x22>;
-		data-cmd-gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+/ {
+	mipi_dbi_screen {
+		compatible = "zephyr,mipi-dbi-spi";
+		spi-dev = <&spi1>;
+		dc-gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
 		reset-gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;
+		write-only;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "okay";
+
+		st7789v: st7789v@0 {
+			compatible = "sitronix,st7789v";
+			reg = <0>;
+			mipi-max-frequency = <8000000>;
+			width = <320>;
+			height = <240>;
+			x-offset = <0>;
+			y-offset = <0>;
+			vcom = <0x2b>;
+			gctrl = <0x35>;
+			vrhs = <0x0f>;
+			vdvs = <0x20>;
+			mdac = <0xa0>;
+			gamma = <0x01>;
+			colmod = <0x05>;
+			lcm = <0x2c>;
+			porch-param = [0c 0c 00 33 33];
+			cmd2en-param = [5a 69 02 01];
+			pwctrl1-param = [52 a1];
+			pvgam-param = [d0 00 02 07 0b 1a 31 54 40 29 12 12 12 17];
+			nvgam-param = [d0 00 02 07 05 15 2d 44 44 1c 18 16 1c 1d];
+			ram-param = [00 f8];
+			rgb-param = [cd 08 14];
+			mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
+			status = "okay";
+		};
 	};
 };
 

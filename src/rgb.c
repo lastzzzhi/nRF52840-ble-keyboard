@@ -16,6 +16,10 @@ LOG_MODULE_REGISTER(rgb, LOG_LEVEL_INF);
 
 static const struct device *const strip = DEVICE_DT_GET(STRIP_NODE);
 static struct led_rgb pixels[RGB_LED_COUNT];
+static enum app_mode last_mode = APP_MODE_OFF;
+static bool last_connected;
+static bool last_numlock;
+static bool last_state_valid;
 
 int rgb_init(void)
 {
@@ -35,6 +39,16 @@ void rgb_show_status(enum app_mode mode, bool connected, bool numlock)
 	if (!device_is_ready(strip)) {
 		return;
 	}
+
+	if (last_state_valid && mode == last_mode &&
+	    connected == last_connected && numlock == last_numlock) {
+		return;
+	}
+
+	last_mode = mode;
+	last_connected = connected;
+	last_numlock = numlock;
+	last_state_valid = true;
 
 	switch (mode) {
 	case APP_MODE_BLE:
@@ -69,6 +83,8 @@ void rgb_show_status(enum app_mode mode, bool connected, bool numlock)
 
 void rgb_off(void)
 {
+	last_state_valid = false;
+
 	if (device_is_ready(strip)) {
 		memset(pixels, 0, sizeof(pixels));
 		(void)led_strip_update_rgb(strip, pixels, ARRAY_SIZE(pixels));

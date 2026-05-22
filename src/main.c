@@ -4,7 +4,9 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/bluetooth/services/bas.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/hwinfo.h>
 #include <zephyr/kernel.h>
+#include <zephyr/linker/section_tags.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/pm/pm.h>
 #include <zephyr/sys/atomic.h>
@@ -23,9 +25,18 @@ LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 #define CTRL_NODE DT_NODELABEL(board_controls)
 #define SCAN_INTERVAL K_MSEC(5)
 #define STATUS_INTERVAL_MS 1000
+#define BOOT_MAGIC 0xa107b007
+#define FW_MARKER "AI_BLE_KEYBOARD diag no-usb-status-log"
 
 static const struct gpio_dt_spec mode_gpio =
 	GPIO_DT_SPEC_GET(CTRL_NODE, mode_gpios);
+
+struct boot_counter_state {
+	uint32_t magic;
+	uint32_t count;
+};
+
+static __noinit struct boot_counter_state boot_counter;
 
 struct encoder_line {
 	const char *name;
@@ -90,6 +101,39 @@ static enum app_mode read_mode_switch(void)
 
 	val = gpio_pin_get_dt(&mode_gpio);
 	return val > 0 ? APP_MODE_BLE : APP_MODE_USB;
+}
+
+static uint32_t next_boot_count(void)
+{
+	if (boot_counter.magic != BOOT_MAGIC) {
+		boot_counter.magic = BOOT_MAGIC;
+		boot_counter.count = 0;
+	}
+
+	boot_counter.count++;
+	return boot_counter.count;
+}
+
+static uint32_t log_reset_cause(void)
+{
+	uint32_t cause;
+
+	if (hwinfo_get_reset_cause(&cause) != 0) {
+		LOG_WRN("Reset cause unavailable");
+		printk("Reset cause unavailable\n");
+		return 0;
+	}
+
+	LOG_INF("Reset cause: 0x%08x%s%s%s%s%s%s", cause,
+		(cause & RESET_POR) ? " POR" : "",
+		(cause & RESET_PIN) ? " PIN" : "",
+		(cause & RESET_SOFTWARE) ? " SOFT" : "",
+		(cause & RESET_BROWNOUT) ? " BROWNOUT" : "",
+		(cause & RESET_WATCHDOG) ? " WATCHDOG" : "",
+		(cause & RESET_CPU_LOCKUP) ? " CPU_LOCKUP" : "");
+	printk("Reset cause: 0x%08x\n", cause);
+	(void)hwinfo_clear_reset_cause();
+	return cause;
 }
 
 static void clear_keyboard_report(void)
@@ -308,11 +352,18 @@ int main(void)
 	struct keyboard_event events[8];
 	int64_t next_status = 0;
 	enum app_mode mode = APP_MODE_BLE;
+	uint32_t boot_count;
+	uint32_t reset_cause;
 
 	LOG_INF("AI BLE Keyboard starting");
+	printk("FW marker: %s\n", FW_MARKER);
+	boot_count = next_boot_count();
+	reset_cause = log_reset_cause();
+	printk("Boot count: %u\n", boot_count);
 
 	(void)power_init();
 	(void)app_display_init();
+	display_set_boot_info(boot_count, reset_cause);
 	(void)rgb_init();
 	keymap_init();
 
@@ -326,12 +377,15 @@ int main(void)
 
 	(void)encoder_init();
 
-	if (hid_transport_init() != 0) {
+	mode = read_mode_switch();
+	printk("DBG initial mode=%d\n", mode);
+
+	if (hid_transport_init(mode) != 0) {
 		LOG_ERR("HID transport init failed");
 	}
 
-	mode = read_mode_switch();
 	hid_transport_set_mode(mode);
+	printk("DBG main loop enter mode=%d\n", mode);
 
 	while (true) {
 		enum app_mode new_mode = read_mode_switch();
@@ -351,6 +405,8 @@ int main(void)
 			}
 			encoder_sample();
 		}
+		app_display_tick();
+		power_ip5306_keepalive_tick(mode != APP_MODE_OFF);
 
 		if (k_uptime_get() >= next_status) {
 			int battery = power_get_battery_percent();
@@ -359,7 +415,9 @@ int main(void)
 			display_update_status(mode, battery, connected,
 					      keymap_numlock_enabled());
 			rgb_show_status(mode, connected, keymap_numlock_enabled());
-			bt_bas_set_battery_level(battery >= 0 ? battery : 0);
+			if (hid_transport_ble_ready()) {
+				bt_bas_set_battery_level(battery >= 0 ? battery : 0);
+			}
 			next_status = k_uptime_get() + STATUS_INTERVAL_MS;
 		}
 

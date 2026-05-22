@@ -50,6 +50,8 @@ static enum usb_dc_status_code usb_status;
 static bool bt_ready;
 static bool adv_active;
 static bool usb_ready;
+static bool ble_hids_ready;
+static bool ble_enable_started;
 
 static const uint8_t report_map[] = {
 	/* Keyboard report, ID 1. */
@@ -254,6 +256,7 @@ static int ble_hids_init(void)
 
 static void bt_ready_cb(int err)
 {
+	printk("DBG bt_ready_cb enter err=%d\n", err);
 	if (err) {
 		LOG_ERR("Bluetooth init failed: %d", err);
 		return;
@@ -261,12 +264,17 @@ static void bt_ready_cb(int err)
 
 	bt_ready = true;
 	LOG_INF("Bluetooth initialized");
+	printk("DBG bluetooth initialized\n");
 
 	if (IS_ENABLED(CONFIG_SETTINGS)) {
+		printk("DBG settings_load enter\n");
 		(void)settings_load();
+		printk("DBG settings_load exit\n");
 	}
 
+	printk("DBG advertising_start enter\n");
 	advertising_start();
+	printk("DBG advertising_start exit\n");
 }
 
 static void usb_status_cb(enum usb_dc_status_code status, const uint8_t *param)
@@ -288,7 +296,6 @@ static void usb_status_cb(enum usb_dc_status_code status, const uint8_t *param)
 	default:
 		break;
 	}
-	LOG_INF("USB status: %d ready=%d", status, usb_ready);
 }
 
 static void usb_int_in_ready_cb(const struct device *dev)
@@ -305,6 +312,7 @@ static int usb_hid_init_transport(void)
 {
 	int err;
 
+	printk("DBG usb_hid_init enter\n");
 	usb_hid_dev = device_get_binding("HID_0");
 	if (usb_hid_dev == NULL) {
 		LOG_ERR("USB HID device not found");
@@ -324,31 +332,67 @@ static int usb_hid_init_transport(void)
 		return err;
 	}
 
+	printk("DBG usb_hid_init exit\n");
 	return 0;
 }
 
-int hid_transport_init(void)
+static int ble_transport_start(void)
 {
 	int err;
 
-	k_sem_init(&usb_ep_sem, 0, 1);
-
-	err = usb_hid_init_transport();
-	if (err) {
-		LOG_WRN("USB HID unavailable: %d", err);
+	if (bt_ready || ble_enable_started) {
+		advertising_start();
+		return 0;
 	}
 
-	err = ble_hids_init();
-	if (err) {
-		return err;
+	if (!ble_hids_ready) {
+		printk("DBG ble_hids_init before\n");
+		err = ble_hids_init();
+		printk("DBG ble_hids_init after err=%d\n", err);
+		if (err) {
+			return err;
+		}
+		ble_hids_ready = true;
 	}
 
+	printk("DBG bt_enable before\n");
+	ble_enable_started = true;
 	err = bt_enable(bt_ready_cb);
+	printk("DBG bt_enable after err=%d\n", err);
 	if (err) {
+		ble_enable_started = false;
 		LOG_ERR("Bluetooth enable failed: %d", err);
 		return err;
 	}
 
+	return 0;
+}
+
+int hid_transport_init(enum app_mode initial_mode)
+{
+	int err;
+
+	printk("DBG hid_transport_init enter mode=%d\n", initial_mode);
+	current_mode = initial_mode;
+	k_sem_init(&usb_ep_sem, 0, 1);
+
+	printk("DBG usb init before\n");
+	err = usb_hid_init_transport();
+	printk("DBG usb init after err=%d\n", err);
+	if (err) {
+		LOG_WRN("USB HID unavailable: %d", err);
+	}
+
+	if (initial_mode == APP_MODE_BLE) {
+		err = ble_transport_start();
+		if (err) {
+			return err;
+		}
+	} else {
+		printk("DBG ble init skipped for non-BLE mode\n");
+	}
+
+	printk("DBG hid_transport_init exit\n");
 	return 0;
 }
 
@@ -361,7 +405,7 @@ void hid_transport_set_mode(enum app_mode mode)
 	current_mode = mode;
 
 	if (mode == APP_MODE_BLE) {
-		advertising_start();
+		(void)ble_transport_start();
 	} else {
 		advertising_stop();
 	}
@@ -370,6 +414,11 @@ void hid_transport_set_mode(enum app_mode mode)
 enum app_mode hid_transport_get_mode(void)
 {
 	return current_mode;
+}
+
+bool hid_transport_ble_ready(void)
+{
+	return bt_ready;
 }
 
 bool hid_transport_connected(void)
