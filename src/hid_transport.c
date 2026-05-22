@@ -256,7 +256,6 @@ static int ble_hids_init(void)
 
 static void bt_ready_cb(int err)
 {
-	printk("DBG bt_ready_cb enter err=%d\n", err);
 	if (err) {
 		LOG_ERR("Bluetooth init failed: %d", err);
 		return;
@@ -264,17 +263,12 @@ static void bt_ready_cb(int err)
 
 	bt_ready = true;
 	LOG_INF("Bluetooth initialized");
-	printk("DBG bluetooth initialized\n");
 
 	if (IS_ENABLED(CONFIG_SETTINGS)) {
-		printk("DBG settings_load enter\n");
 		(void)settings_load();
-		printk("DBG settings_load exit\n");
 	}
 
-	printk("DBG advertising_start enter\n");
 	advertising_start();
-	printk("DBG advertising_start exit\n");
 }
 
 static void usb_status_cb(enum usb_dc_status_code status, const uint8_t *param)
@@ -312,7 +306,6 @@ static int usb_hid_init_transport(void)
 {
 	int err;
 
-	printk("DBG usb_hid_init enter\n");
 	usb_hid_dev = device_get_binding("HID_0");
 	if (usb_hid_dev == NULL) {
 		LOG_ERR("USB HID device not found");
@@ -332,7 +325,6 @@ static int usb_hid_init_transport(void)
 		return err;
 	}
 
-	printk("DBG usb_hid_init exit\n");
 	return 0;
 }
 
@@ -346,19 +338,15 @@ static int ble_transport_start(void)
 	}
 
 	if (!ble_hids_ready) {
-		printk("DBG ble_hids_init before\n");
 		err = ble_hids_init();
-		printk("DBG ble_hids_init after err=%d\n", err);
 		if (err) {
 			return err;
 		}
 		ble_hids_ready = true;
 	}
 
-	printk("DBG bt_enable before\n");
 	ble_enable_started = true;
 	err = bt_enable(bt_ready_cb);
-	printk("DBG bt_enable after err=%d\n", err);
 	if (err) {
 		ble_enable_started = false;
 		LOG_ERR("Bluetooth enable failed: %d", err);
@@ -372,13 +360,10 @@ int hid_transport_init(enum app_mode initial_mode)
 {
 	int err;
 
-	printk("DBG hid_transport_init enter mode=%d\n", initial_mode);
 	current_mode = initial_mode;
 	k_sem_init(&usb_ep_sem, 0, 1);
 
-	printk("DBG usb init before\n");
 	err = usb_hid_init_transport();
-	printk("DBG usb init after err=%d\n", err);
 	if (err) {
 		LOG_WRN("USB HID unavailable: %d", err);
 	}
@@ -389,10 +374,9 @@ int hid_transport_init(enum app_mode initial_mode)
 			return err;
 		}
 	} else {
-		printk("DBG ble init skipped for non-BLE mode\n");
+		LOG_INF("Bluetooth init deferred in non-BLE mode");
 	}
 
-	printk("DBG hid_transport_init exit\n");
 	return 0;
 }
 

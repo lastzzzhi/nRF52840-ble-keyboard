@@ -20,7 +20,9 @@ LOG_MODULE_REGISTER(power, LOG_LEVEL_INF);
 #define BATTERY_FULL_MV 4200
 #define BATTERY_ADC_SETTLE_MS 50
 #define BATTERY_ADC_SAMPLES 4
-#define BATTERY_ADC_RUNTIME_ENABLED 0
+#define BATTERY_ADC_START_DELAY_MS 3000
+#define BATTERY_ADC_INTERVAL_MS 30000
+#define BATTERY_ADC_RUNTIME_ENABLED 1
 #define IP5306_KEEPALIVE_INTERVAL_MS 10000
 #define IP5306_KEEPALIVE_PULSE_MS 80
 
@@ -36,6 +38,7 @@ static const struct device *const ip5306_i2c = DEVICE_DT_GET(DT_NODELABEL(i2c0))
 
 static int last_battery_mv = -1;
 static int last_battery_percent = -1;
+static int64_t next_battery_sample_ms;
 static int64_t next_keepalive_ms;
 static int64_t keepalive_release_ms;
 static bool keepalive_active;
@@ -87,6 +90,7 @@ int power_get_battery_mv(void)
 #if !BATTERY_ADC_RUNTIME_ENABLED
 	return last_battery_mv;
 #else
+	int64_t now = k_uptime_get();
 	int16_t samples[BATTERY_ADC_SAMPLES];
 	int32_t sample_sum = 0;
 	int32_t pin_mv;
@@ -99,6 +103,17 @@ int power_get_battery_mv(void)
 		.buffer_size = sizeof(samples),
 	};
 	int err;
+
+	if (next_battery_sample_ms == 0) {
+		next_battery_sample_ms = now + BATTERY_ADC_START_DELAY_MS;
+		return last_battery_mv;
+	}
+
+	if (now < next_battery_sample_ms) {
+		return last_battery_mv;
+	}
+
+	next_battery_sample_ms = now + BATTERY_ADC_INTERVAL_MS;
 
 	if (!adc_is_ready_dt(&bat_adc)) {
 		return last_battery_mv;

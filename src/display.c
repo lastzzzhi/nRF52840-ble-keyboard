@@ -362,18 +362,6 @@ int app_display_init(void)
 	return 0;
 }
 
-void display_set_boot_info(uint32_t boot_count, uint32_t reset_cause)
-{
-	if (!display_ready) {
-		return;
-	}
-
-	lv_label_set_text_fmt(status_label, "B%03u R%08x",
-			      (unsigned int)boot_count,
-			      (unsigned int)reset_cause);
-	lv_timer_handler();
-}
-
 void display_update_status(enum app_mode mode, int battery_percent,
 			   bool connected, bool numlock)
 {
@@ -430,6 +418,8 @@ void display_update_status(enum app_mode mode, int battery_percent,
 					  connected ? "BT LINK" : "BT SCAN");
 			lv_label_set_text(mode_status_label,
 					  connected ? "CONNECTED" : "SEARCHING");
+			lv_label_set_text(status_label,
+					  connected ? "BLE ACTIVE" : "BLE IDLE");
 			lv_obj_set_style_border_color(bt_icon,
 						       lv_color_hex(connected ? 0x32d583 : 0x39a7ff),
 						       0);
@@ -441,6 +431,8 @@ void display_update_status(enum app_mode mode, int battery_percent,
 					  connected ? "USB LINK" : "USB WAIT");
 			lv_label_set_text(mode_status_label,
 					  connected ? "CONNECTED" : "WAITING");
+			lv_label_set_text(status_label,
+					  connected ? "USB HID" : "USB IDLE");
 			lv_obj_set_style_border_color(bt_icon,
 						       lv_color_hex(0x9aa6b8), 0);
 			lv_obj_set_style_bg_color(bt_icon,
@@ -448,6 +440,7 @@ void display_update_status(enum app_mode mode, int battery_percent,
 		} else {
 			lv_label_set_text(link_label, "OFF");
 			lv_label_set_text(mode_status_label, "SLEEP");
+			lv_label_set_text(status_label, "POWER OFF");
 			lv_obj_set_style_border_color(bt_icon,
 						       lv_color_hex(0x4c5668), 0);
 			lv_obj_set_style_bg_color(bt_icon,
