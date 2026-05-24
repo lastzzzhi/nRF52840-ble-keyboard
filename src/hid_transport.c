@@ -20,8 +20,6 @@
 #include <zephyr/usb/class/usb_hid.h>
 #include <zephyr/usb/usb_device.h>
 
-#include "keymap.h"
-
 LOG_MODULE_REGISTER(hid_transport, LOG_LEVEL_INF);
 
 #define DEVICE_NAME CONFIG_BT_DEVICE_NAME
@@ -373,7 +371,6 @@ static void hids_outp_rep_handler(struct bt_hids_rep *rep,
 	ARG_UNUSED(conn);
 
 	if (write && rep->data != NULL) {
-		keymap_set_numlock((*rep->data & HID_LED_NUMLOCK) != 0);
 		LOG_INF("BLE keyboard LEDs: 0x%02x", *rep->data);
 	}
 }
@@ -500,7 +497,6 @@ static int usb_set_report_cb(const struct device *dev,
 		return 0;
 	}
 
-	keymap_set_numlock(((*data)[0] & HID_LED_NUMLOCK) != 0);
 	LOG_INF("USB keyboard LEDs: 0x%02x", (*data)[0]);
 	return 0;
 }

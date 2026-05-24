@@ -6,7 +6,8 @@
 #include "app_types.h"
 
 int rgb_init(void);
-void rgb_show_status(enum app_mode mode, bool connected, bool numlock);
+void rgb_show_status(enum app_mode mode, bool connected, bool numlock, bool idle);
+void rgb_tick(void);
 void rgb_off(void);
 
 #endif

@@ -10,7 +10,7 @@ LOG_MODULE_REGISTER(key_wakeup_pm, LOG_LEVEL_INF);
 #define ACTIVE_SCAN_INTERVAL K_MSEC(5)
 #define IDLE_SCAN_INTERVAL K_MSEC(250)
 #define OFF_INTERVAL K_MSEC(200)
-#define ACTIVE_HOLD_MS 2000
+#define ACTIVE_HOLD_MS 10000
 
 static atomic_t wake_requested;
 static bool idle;

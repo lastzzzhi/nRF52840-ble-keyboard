@@ -50,6 +50,7 @@ static lv_style_t style_box;
 static lv_style_t style_fill;
 static lv_style_t style_icon;
 static bool display_ready;
+static bool display_idle;
 static int64_t build_epoch_seconds;
 static int last_display_mode = -1;
 static int last_display_battery = -999;
@@ -69,6 +70,15 @@ static void screen_backlight_probe(void)
 	}
 
 	(void)gpio_pin_configure_dt(&screen_bl, GPIO_OUTPUT_ACTIVE);
+	(void)gpio_pin_set_dt(&screen_bl, 1);
+	display_idle = false;
+}
+
+static void screen_backlight_set(bool on)
+{
+	if (gpio_is_ready_dt(&screen_bl)) {
+		(void)gpio_pin_set_dt(&screen_bl, on ? 1 : 0);
+	}
 }
 
 static const char *mode_name(enum app_mode mode)
@@ -477,4 +487,14 @@ void app_display_tick(void)
 	if (display_ready) {
 		lv_timer_handler();
 	}
+}
+
+void app_display_set_idle(bool idle)
+{
+	if (display_idle == idle) {
+		return;
+	}
+
+	display_idle = idle;
+	screen_backlight_set(!idle);
 }

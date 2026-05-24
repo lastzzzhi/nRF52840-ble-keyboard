@@ -13,42 +13,45 @@ LOG_MODULE_REGISTER(rgb, LOG_LEVEL_INF);
 
 #define STRIP_NODE DT_ALIAS(led_strip)
 #define RGB_LED_COUNT DT_PROP(STRIP_NODE, chain_length)
+#define RGB_IDLE_REFRESH_MS 50
+#define RGB_IDLE_BREATH_PERIOD_MS 2400
+#define RGB_IDLE_MIN_SCALE 22
+#define RGB_IDLE_MAX_SCALE 78
 
 static const struct device *const strip = DEVICE_DT_GET(STRIP_NODE);
 static struct led_rgb pixels[RGB_LED_COUNT];
 static enum app_mode last_mode = APP_MODE_OFF;
 static bool last_connected;
 static bool last_numlock;
+static bool last_idle;
 static bool last_state_valid;
+static int64_t next_idle_refresh_ms;
 
-int rgb_init(void)
+static uint8_t scale_channel(uint8_t value, uint8_t scale)
 {
-	if (!device_is_ready(strip)) {
-		LOG_WRN("LED strip is not ready");
-		return -ENODEV;
-	}
-
-	rgb_off();
-	return 0;
+	return (uint8_t)(((uint16_t)value * scale) / 100U);
 }
 
-void rgb_show_status(enum app_mode mode, bool connected, bool numlock)
+static uint8_t idle_breath_scale(int64_t now)
+{
+	int64_t phase = now % RGB_IDLE_BREATH_PERIOD_MS;
+	int32_t span = RGB_IDLE_MAX_SCALE - RGB_IDLE_MIN_SCALE;
+	int32_t level;
+
+	if (phase < RGB_IDLE_BREATH_PERIOD_MS / 2) {
+		level = (int32_t)((phase * span) / (RGB_IDLE_BREATH_PERIOD_MS / 2));
+	} else {
+		level = (int32_t)(((RGB_IDLE_BREATH_PERIOD_MS - phase) * span) /
+				  (RGB_IDLE_BREATH_PERIOD_MS / 2));
+	}
+
+	return (uint8_t)(RGB_IDLE_MIN_SCALE + level);
+}
+
+static struct led_rgb status_color(enum app_mode mode, bool connected,
+				   bool numlock)
 {
 	struct led_rgb color = { 0 };
-
-	if (!device_is_ready(strip)) {
-		return;
-	}
-
-	if (last_state_valid && mode == last_mode &&
-	    connected == last_connected && numlock == last_numlock) {
-		return;
-	}
-
-	last_mode = mode;
-	last_connected = connected;
-	last_numlock = numlock;
-	last_state_valid = true;
 
 	switch (mode) {
 	case APP_MODE_BLE:
@@ -64,14 +67,39 @@ void rgb_show_status(enum app_mode mode, bool connected, bool numlock)
 		break;
 	case APP_MODE_OFF:
 	default:
-		rgb_off();
-		return;
+		break;
 	}
 
 	if (!numlock) {
 		color.r = 24;
 		color.g = 10;
 		color.b = 0;
+	}
+
+	return color;
+}
+
+static void rgb_render(int64_t now)
+{
+	struct led_rgb color;
+
+	if (!device_is_ready(strip) || !last_state_valid) {
+		return;
+	}
+
+	if (last_mode == APP_MODE_OFF) {
+		rgb_off();
+		return;
+	}
+
+	color = status_color(last_mode, last_connected, last_numlock);
+	if (last_idle) {
+		uint8_t scale = idle_breath_scale(now);
+
+		color.r = scale_channel(color.r, scale);
+		color.g = scale_channel(color.g, scale);
+		color.b = scale_channel(color.b, scale);
+		next_idle_refresh_ms = now + RGB_IDLE_REFRESH_MS;
 	}
 
 	power_set_rgb_enabled(true);
@@ -81,9 +109,66 @@ void rgb_show_status(enum app_mode mode, bool connected, bool numlock)
 	(void)led_strip_update_rgb(strip, pixels, ARRAY_SIZE(pixels));
 }
 
+int rgb_init(void)
+{
+	if (!device_is_ready(strip)) {
+		LOG_WRN("LED strip is not ready");
+		return -ENODEV;
+	}
+
+	rgb_off();
+	return 0;
+}
+
+void rgb_show_status(enum app_mode mode, bool connected, bool numlock, bool idle)
+{
+	int64_t now = k_uptime_get();
+
+	if (!device_is_ready(strip)) {
+		return;
+	}
+
+	if (last_state_valid && mode == last_mode &&
+	    connected == last_connected && numlock == last_numlock &&
+	    idle == last_idle && !idle) {
+		return;
+	}
+
+	last_mode = mode;
+	last_connected = connected;
+	last_numlock = numlock;
+	last_idle = idle;
+	last_state_valid = true;
+
+	if (mode == APP_MODE_OFF) {
+		rgb_off();
+		return;
+	}
+
+	rgb_render(now);
+}
+
+void rgb_tick(void)
+{
+	int64_t now;
+
+	if (!last_state_valid || !last_idle) {
+		return;
+	}
+
+	now = k_uptime_get();
+	if (now < next_idle_refresh_ms) {
+		return;
+	}
+
+	rgb_render(now);
+}
+
 void rgb_off(void)
 {
 	last_state_valid = false;
+	last_idle = false;
+	next_idle_refresh_ms = 0;
 
 	if (device_is_ready(strip)) {
 		memset(pixels, 0, sizeof(pixels));

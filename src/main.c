@@ -200,6 +200,7 @@ static bool keyboard_report_has_keys(void)
 static void process_key_event(const struct keyboard_event *event)
 {
 	uint8_t usage;
+	bool layer_changed = false;
 
 	if (event->row >= KEYBOARD_MATRIX_ROWS || event->col >= KEYBOARD_MATRIX_COLS)
 	{
@@ -218,10 +219,13 @@ static void process_key_event(const struct keyboard_event *event)
 
 	if (event->pressed)
 	{
+		bool before_numlock = keymap_numlock_enabled();
+
 		usage = keymap_usage_for_event(event);
 		pressed_usage[event->row][event->col] = usage;
 		add_usage(usage);
 		keymap_note_event(event);
+		layer_changed = before_numlock != keymap_numlock_enabled();
 	}
 	else
 	{
@@ -234,6 +238,11 @@ static void process_key_event(const struct keyboard_event *event)
 			event->row, event->col, event->pressed ? "down" : "up",
 			usage, keymap_layer_name());
 	(void)hid_transport_send_keyboard(&keyboard_report);
+
+	if (layer_changed) {
+		rgb_show_status(hid_transport_get_mode(), hid_transport_connected(),
+				keymap_numlock_enabled(), key_wakeup_pm_is_idle());
+	}
 }
 
 static void encoder_work_handler(struct k_work *work)
@@ -456,6 +465,7 @@ int main(void)
 		}
 
 		key_wakeup_pm_update(mode, now);
+		app_display_set_idle(key_wakeup_pm_is_idle());
 
 		if (key_wakeup_pm_should_scan(mode))
 		{
@@ -476,6 +486,7 @@ int main(void)
 		}
 		hid_transport_tick();
 		app_display_tick();
+		rgb_tick();
 		power_ip5306_keepalive_tick(mode != APP_MODE_OFF);
 
 		if (now >= next_status)
@@ -486,7 +497,8 @@ int main(void)
 
 			display_update_status(mode, battery, battery_mv, connected,
 								  keymap_numlock_enabled());
-			rgb_show_status(mode, connected, keymap_numlock_enabled());
+			rgb_show_status(mode, connected, keymap_numlock_enabled(),
+					key_wakeup_pm_is_idle());
 			if (hid_transport_ble_ready())
 			{
 				bt_bas_set_battery_level(battery >= 0 ? battery : 0);
