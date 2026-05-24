@@ -11,6 +11,7 @@ void keymap_init(void);
 uint8_t keymap_usage_for_event(const struct keyboard_event *event);
 void keymap_note_event(const struct keyboard_event *event);
 bool keymap_numlock_enabled(void);
+void keymap_set_numlock(bool enabled);
 const char *keymap_layer_name(void);
 
 #endif

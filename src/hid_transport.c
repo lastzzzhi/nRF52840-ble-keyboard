@@ -20,6 +20,8 @@
 #include <zephyr/usb/class/usb_hid.h>
 #include <zephyr/usb/usb_device.h>
 
+#include "keymap.h"
+
 LOG_MODULE_REGISTER(hid_transport, LOG_LEVEL_INF);
 
 #define DEVICE_NAME CONFIG_BT_DEVICE_NAME
@@ -37,8 +39,14 @@ LOG_MODULE_REGISTER(hid_transport, LOG_LEVEL_INF);
 #define BLE_FAST_ADV_TIMEOUT_MS 30000
 #define BLE_ADV_SLOW_INT_MIN 0x0640
 #define BLE_ADV_SLOW_INT_MAX 0x0780
+#define CONSUMER_QUEUE_LEN 8
+#define CONSUMER_PULSE_MS 10
+#define HID_RETRY_MS 5
+#define USB_HID_REPORT_TYPE_OUTPUT 2
+#define HID_LED_NUMLOCK BIT(0)
 
 BT_HIDS_DEF(hids_obj, OUTPUT_REPORT_MAX_LEN, HID_KEYBOARD_REPORT_SIZE);
+K_MSGQ_DEFINE(consumer_msgq, sizeof(uint8_t), CONSUMER_QUEUE_LEN, 1);
 
 struct conn_mode {
 	struct bt_conn *conn;
@@ -57,8 +65,27 @@ static bool usb_ready;
 static bool ble_hids_ready;
 static bool ble_enable_started;
 static bool force_repair_next;
+static bool usb_boot_protocol;
+static bool keyboard_pending;
+static struct hid_keyboard_report keyboard_latest;
+static struct k_mutex tx_lock;
+static struct k_work_delayable tx_work;
 static int64_t adv_fast_until_ms;
+static int64_t consumer_release_due_ms;
+static uint8_t active_consumer_bits;
 
+enum consumer_tx_state {
+	CONSUMER_TX_IDLE,
+	CONSUMER_TX_PRESS,
+	CONSUMER_TX_RELEASE,
+};
+
+static enum consumer_tx_state consumer_tx_state;
+
+static void hid_tx_work_handler(struct k_work *work);
+static void hid_tx_process(void);
+static int hid_raw_send_keyboard(const struct hid_keyboard_report *report);
+static int hid_raw_send_consumer_bits(uint8_t bits);
 static int ble_send_consumer_bits(uint8_t bits);
 
 static const uint8_t report_map[] = {
@@ -242,6 +269,26 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	}
 }
 
+static bool hid_retryable_error(int err)
+{
+	return err == -ENOMEM || err == -EAGAIN || err == -EBUSY ||
+	       err == -EINPROGRESS;
+}
+
+static void hid_tx_schedule(k_timeout_t delay)
+{
+	(void)k_work_reschedule(&tx_work, delay);
+}
+
+static void hid_tx_clear_pending(void)
+{
+	keyboard_pending = false;
+	consumer_tx_state = CONSUMER_TX_IDLE;
+	active_consumer_bits = 0;
+	consumer_release_due_ms = 0;
+	k_msgq_purge(&consumer_msgq);
+}
+
 static void security_changed(struct bt_conn *conn, bt_security_t level,
 			     enum bt_security_err err)
 {
@@ -326,6 +373,7 @@ static void hids_outp_rep_handler(struct bt_hids_rep *rep,
 	ARG_UNUSED(conn);
 
 	if (write && rep->data != NULL) {
+		keymap_set_numlock((*rep->data & HID_LED_NUMLOCK) != 0);
 		LOG_INF("BLE keyboard LEDs: 0x%02x", *rep->data);
 	}
 }
@@ -431,7 +479,44 @@ static void usb_int_in_ready_cb(const struct device *dev)
 	k_sem_give(&usb_ep_sem);
 }
 
+static int usb_set_report_cb(const struct device *dev,
+			     struct usb_setup_packet *setup,
+			     int32_t *len, uint8_t **data)
+{
+	uint8_t report_type = (setup->wValue >> 8) & 0xff;
+	uint8_t report_id = setup->wValue & 0xff;
+
+	ARG_UNUSED(dev);
+
+	if (report_type != USB_HID_REPORT_TYPE_OUTPUT ||
+	    (report_id != 0 && report_id != OUTPUT_REP_KEYS_REF_ID) ||
+	    len == NULL || data == NULL || *data == NULL || *len < 1) {
+		return -ENOTSUP;
+	}
+
+	if (current_mode != APP_MODE_USB) {
+		LOG_DBG("Ignoring USB keyboard LEDs outside USB mode: 0x%02x",
+			(*data)[0]);
+		return 0;
+	}
+
+	keymap_set_numlock(((*data)[0] & HID_LED_NUMLOCK) != 0);
+	LOG_INF("USB keyboard LEDs: 0x%02x", (*data)[0]);
+	return 0;
+}
+
+static void usb_protocol_change_cb(const struct device *dev, uint8_t protocol)
+{
+	ARG_UNUSED(dev);
+
+	usb_boot_protocol = (protocol == HID_PROTOCOL_BOOT);
+	LOG_INF("USB protocol changed to %s",
+		usb_boot_protocol ? "Boot Protocol" : "Report Protocol");
+}
+
 static const struct hid_ops usb_ops = {
+	.set_report = usb_set_report_cb,
+	.protocol_change = usb_protocol_change_cb,
 	.int_in_ready = usb_int_in_ready_cb,
 };
 
@@ -446,6 +531,11 @@ static int usb_hid_init_transport(void)
 	}
 
 	usb_hid_register_device(usb_hid_dev, report_map, sizeof(report_map), &usb_ops);
+	err = usb_hid_set_proto_code(usb_hid_dev, HID_BOOT_IFACE_CODE_KEYBOARD);
+	if (err) {
+		LOG_WRN("USB HID boot protocol code setup failed: %d", err);
+	}
+
 	err = usb_hid_init(usb_hid_dev);
 	if (err) {
 		LOG_ERR("USB HID init failed: %d", err);
@@ -507,6 +597,8 @@ int hid_transport_init(enum app_mode initial_mode)
 
 	current_mode = initial_mode;
 	k_sem_init(&usb_ep_sem, 0, 1);
+	k_mutex_init(&tx_lock);
+	k_work_init_delayable(&tx_work, hid_tx_work_handler);
 
 	err = usb_hid_init_transport();
 	if (err) {
@@ -531,7 +623,12 @@ void hid_transport_set_mode(enum app_mode mode)
 		return;
 	}
 
+	(void)hid_transport_release_all();
+
+	k_mutex_lock(&tx_lock, K_FOREVER);
+	hid_tx_clear_pending();
 	current_mode = mode;
+	k_mutex_unlock(&tx_lock);
 
 	if (mode == APP_MODE_BLE) {
 		(void)ble_transport_start();
@@ -543,11 +640,10 @@ void hid_transport_set_mode(enum app_mode mode)
 
 void hid_transport_tick(void)
 {
-	if (current_mode != APP_MODE_BLE || !bt_ready || ble_has_connection()) {
-		return;
-	}
+	hid_tx_process();
 
-	if (adv_active && !adv_slow && k_uptime_get() >= adv_fast_until_ms) {
+	if (current_mode == APP_MODE_BLE && bt_ready && !ble_has_connection() &&
+	    adv_active && !adv_slow && k_uptime_get() >= adv_fast_until_ms) {
 		advertising_restart(true);
 	}
 }
@@ -627,7 +723,32 @@ static int usb_send_report(uint8_t report_id, const uint8_t *data, size_t len)
 	return 0;
 }
 
-int hid_transport_send_keyboard(const struct hid_keyboard_report *report)
+static int usb_send_keyboard(const uint8_t *data, size_t len)
+{
+	int err;
+
+	if (usb_hid_dev == NULL || !usb_ready) {
+		return -ENOTCONN;
+	}
+
+	if (!usb_boot_protocol) {
+		return usb_send_report(INPUT_REP_KEYS_REF_ID, data, len);
+	}
+
+	if (IS_ENABLED(CONFIG_USB_DEVICE_REMOTE_WAKEUP) && usb_status == USB_DC_SUSPEND) {
+		(void)usb_wakeup_request();
+	}
+
+	err = hid_int_ep_write(usb_hid_dev, data, len, NULL);
+	if (err) {
+		return err;
+	}
+
+	(void)k_sem_take(&usb_ep_sem, K_MSEC(20));
+	return 0;
+}
+
+static int hid_raw_send_keyboard(const struct hid_keyboard_report *report)
 {
 	uint8_t data[HID_KEYBOARD_REPORT_SIZE];
 
@@ -642,33 +763,138 @@ int hid_transport_send_keyboard(const struct hid_keyboard_report *report)
 	data[0] = report->modifiers;
 	data[1] = report->reserved;
 	memcpy(&data[2], report->keys, sizeof(report->keys));
-	return usb_send_report(INPUT_REP_KEYS_REF_ID, data, sizeof(data));
+	return usb_send_keyboard(data, sizeof(data));
+}
+
+static int hid_raw_send_consumer_bits(uint8_t bits)
+{
+	if (current_mode == APP_MODE_BLE) {
+		return ble_send_consumer_bits(bits);
+	}
+
+	if (usb_boot_protocol) {
+		return -ENOTSUP;
+	}
+
+	return usb_send_report(INPUT_REP_CONSUMER_REF_ID, &bits, sizeof(bits));
+}
+
+static void hid_tx_process_locked(void)
+{
+	int err;
+	int64_t now = k_uptime_get();
+
+	if (keyboard_pending) {
+		err = hid_raw_send_keyboard(&keyboard_latest);
+		if (!err) {
+			keyboard_pending = false;
+		} else if (hid_retryable_error(err)) {
+			hid_tx_schedule(K_MSEC(HID_RETRY_MS));
+			return;
+		} else {
+			keyboard_pending = false;
+		}
+	}
+
+	if (consumer_tx_state == CONSUMER_TX_RELEASE) {
+		if (now < consumer_release_due_ms) {
+			hid_tx_schedule(K_MSEC(consumer_release_due_ms - now));
+			return;
+		}
+
+		err = hid_raw_send_consumer_bits(0);
+		if (!err) {
+			consumer_tx_state = CONSUMER_TX_IDLE;
+			active_consumer_bits = 0;
+		} else if (hid_retryable_error(err)) {
+			hid_tx_schedule(K_MSEC(HID_RETRY_MS));
+			return;
+		} else {
+			consumer_tx_state = CONSUMER_TX_IDLE;
+			active_consumer_bits = 0;
+		}
+	}
+
+	if (consumer_tx_state == CONSUMER_TX_IDLE) {
+		if (k_msgq_get(&consumer_msgq, &active_consumer_bits, K_NO_WAIT) != 0) {
+			return;
+		}
+		consumer_tx_state = CONSUMER_TX_PRESS;
+	}
+
+	if (consumer_tx_state == CONSUMER_TX_PRESS) {
+		err = hid_raw_send_consumer_bits(active_consumer_bits);
+		if (!err) {
+			consumer_release_due_ms = now + CONSUMER_PULSE_MS;
+			consumer_tx_state = CONSUMER_TX_RELEASE;
+			hid_tx_schedule(K_MSEC(CONSUMER_PULSE_MS));
+		} else if (hid_retryable_error(err)) {
+			hid_tx_schedule(K_MSEC(HID_RETRY_MS));
+		} else {
+			consumer_tx_state = CONSUMER_TX_IDLE;
+			active_consumer_bits = 0;
+			if (k_msgq_num_used_get(&consumer_msgq) > 0) {
+				hid_tx_schedule(K_NO_WAIT);
+			}
+		}
+	}
+}
+
+static void hid_tx_process(void)
+{
+	k_mutex_lock(&tx_lock, K_FOREVER);
+	hid_tx_process_locked();
+	k_mutex_unlock(&tx_lock);
+}
+
+static void hid_tx_work_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+
+	hid_tx_process();
+}
+
+int hid_transport_send_keyboard(const struct hid_keyboard_report *report)
+{
+	int err;
+
+	if (report == NULL || current_mode == APP_MODE_OFF) {
+		return -EINVAL;
+	}
+
+	k_mutex_lock(&tx_lock, K_FOREVER);
+	err = hid_raw_send_keyboard(report);
+	if (!err) {
+		keyboard_pending = false;
+	} else if (hid_retryable_error(err)) {
+		keyboard_latest = *report;
+		keyboard_pending = true;
+		hid_tx_schedule(K_MSEC(HID_RETRY_MS));
+	} else {
+		keyboard_pending = false;
+	}
+	k_mutex_unlock(&tx_lock);
+
+	return err;
 }
 
 int hid_transport_release_all(void)
 {
 	struct hid_keyboard_report empty_keyboard = { 0 };
-	uint8_t empty_consumer = 0;
 	int err;
+	int consumer_err;
 
 	if (current_mode == APP_MODE_OFF) {
 		return 0;
 	}
 
-	err = hid_transport_send_keyboard(&empty_keyboard);
-	if (current_mode == APP_MODE_BLE) {
-		int consumer_err = ble_send_consumer_bits(0);
+	k_mutex_lock(&tx_lock, K_FOREVER);
+	hid_tx_clear_pending();
+	err = hid_raw_send_keyboard(&empty_keyboard);
+	consumer_err = hid_raw_send_consumer_bits(0);
+	k_mutex_unlock(&tx_lock);
 
-		return err ? err : consumer_err;
-	}
-
-	{
-		int consumer_err = usb_send_report(INPUT_REP_CONSUMER_REF_ID,
-						   &empty_consumer,
-						   sizeof(empty_consumer));
-
-		return err ? err : consumer_err;
-	}
+	return err ? err : consumer_err;
 }
 
 static int ble_send_consumer_bits(uint8_t bits)
@@ -694,28 +920,21 @@ static int ble_send_consumer_bits(uint8_t bits)
 int hid_transport_send_consumer(uint16_t usage)
 {
 	uint8_t bits = consumer_usage_to_bits(usage);
-	int err;
+	int err = 0;
 
 	if (bits == 0 || current_mode == APP_MODE_OFF) {
 		return -EINVAL;
 	}
 
-	if (current_mode == APP_MODE_BLE) {
-		err = ble_send_consumer_bits(bits);
-		if (!err) {
-			k_sleep(K_MSEC(10));
-			err = ble_send_consumer_bits(0);
-		}
-		return err;
+	k_mutex_lock(&tx_lock, K_FOREVER);
+	if (!hid_transport_connected()) {
+		err = -ENOTCONN;
+	} else if (k_msgq_put(&consumer_msgq, &bits, K_NO_WAIT) != 0) {
+		err = -ENOSPC;
+	} else {
+		hid_tx_process_locked();
 	}
-
-	err = usb_send_report(INPUT_REP_CONSUMER_REF_ID, &bits, sizeof(bits));
-	if (!err) {
-		uint8_t release = 0;
-
-		k_sleep(K_MSEC(10));
-		err = usb_send_report(INPUT_REP_CONSUMER_REF_ID, &release, sizeof(release));
-	}
+	k_mutex_unlock(&tx_lock);
 
 	return err;
 }

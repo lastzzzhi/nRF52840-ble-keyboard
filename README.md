@@ -21,7 +21,7 @@ cmake -B build -S . -GNinja -DBOARD=ai_ble_keyboard/nrf52840 -DBOARD_ROOT=$PWD -
 ninja -C build
 ```
 
-The generated HEX file is `build\zephyr\zephyr.hex`.
+The generated merged HEX file is `build\merged.hex`.
 
 ## Current firmware behavior
 
@@ -30,8 +30,30 @@ The generated HEX file is `build\zephyr\zephyr.hex`.
 - The hardware OFF position is expected to remove or gate system power. The firmware still has an internal `APP_MODE_OFF` state for future boards that expose OFF as a readable GPIO.
 - Matrix scanning uses 6 rows x 4 columns with active-low row scanning and pulled-up columns.
 - NumLock toggles the local numeric/navigation layer and is also sent to the host.
-- EC11 rotation sends Consumer Control volume up/down.
-- WS2812 status color, battery percentage, mode, connection state, and NumLock state are shown on the SSD1306 display when the hardware is present.
+- EC11 rotation sends Consumer Control volume up/down; pressing the encoder switch sends mute.
+- USB mode shows green RGB status and sends only USB HID reports.
+- BLE mode shows blue RGB status, advertises as `AI_BLE_KEYBOARD`, stores bonds in NVS, and sends only BLE HID reports.
+- The ST7789V status display uses a 320 x 172 active area with a 34-line Y offset. It shows mode, connection state, battery percentage/voltage, NumLock state, and date/time.
+
+## Power behavior
+
+- Battery percentage is calibrated as 4.2 V full and 3.3 V empty.
+- The IP5306 keepalive pulse stays enabled while the firmware is in BLE or USB mode so the power module does not shut down under light load.
+- The firmware does not use System OFF or deep sleep. After about 2 seconds without key activity, matrix scanning enters an idle state and arms column GPIO interrupts. Any key press wakes the main loop and restores the 5 ms active scan interval.
+- BLE and USB links are kept alive during matrix idle. Switching MODE releases all pressed keys before changing the active HID transport to avoid stuck keys.
+
+## Runtime logs
+
+- Useful `LOG_INF` lines remain for startup, mode changes, BLE connection state, matrix idle, and key wakeup.
+- Per-key scan logs and encoder bring-up candidates are `LOG_DBG` to keep RTT readable during normal use. Raise the log level or temporarily change those lines back to `LOG_INF` when debugging key mapping.
+
+## Bring-up checklist
+
+- BLE mode: pair once, reboot the keyboard, confirm it reconnects without repeated security failures.
+- USB mode: confirm Windows shows an HID keyboard and keypad input works in a text editor.
+- Idle wakeup: wait for `Keyboard idle: matrix wakeup armed`, press any key, and confirm `Keyboard wakeup: active scan`.
+- MODE switch: confirm USB disconnects BLE intentionally and BLE starts advertising again when switched back.
+- Power: run on battery for at least 30 minutes and confirm the IP5306 does not shut down under idle load.
 
 ## Hardware notes
 

@@ -59,6 +59,11 @@ bool keymap_numlock_enabled(void)
 	return numlock_enabled;
 }
 
+void keymap_set_numlock(bool enabled)
+{
+	numlock_enabled = enabled;
+}
+
 const char *keymap_layer_name(void)
 {
 	return numlock_enabled ? "NUM" : "NAV";

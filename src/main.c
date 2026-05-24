@@ -210,7 +210,7 @@ static void process_key_event(const struct keyboard_event *event)
 	{
 		if (event->pressed)
 		{
-			LOG_INF("encoder switch mute");
+			LOG_DBG("encoder switch mute");
 			(void)hid_transport_send_consumer(HID_CONSUMER_MUTE);
 		}
 		return;
@@ -230,7 +230,7 @@ static void process_key_event(const struct keyboard_event *event)
 		remove_usage(usage);
 	}
 
-	LOG_INF("key r%u c%u %s usage 0x%02x layer %s",
+	LOG_DBG("key r%u c%u %s usage 0x%02x layer %s",
 			event->row, event->col, event->pressed ? "down" : "up",
 			usage, keymap_layer_name());
 	(void)hid_transport_send_keyboard(&keyboard_report);
@@ -397,7 +397,7 @@ static int encoder_init(void)
 
 		pair->last_state = (encoder_line_state(pair->a) << 1) |
 						   encoder_line_state(pair->b);
-		LOG_INF("Encoder candidate %s initial state %d",
+		LOG_DBG("Encoder candidate %s initial state %d",
 				pair->name, pair->last_state);
 	}
 
@@ -447,7 +447,6 @@ int main(void)
 
 		if (new_mode != mode)
 		{
-			(void)hid_transport_release_all();
 			clear_keyboard_state();
 			mode = new_mode;
 			hid_transport_set_mode(mode);
