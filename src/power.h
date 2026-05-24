@@ -17,6 +17,7 @@ int power_get_battery_mv(void);
 enum power_charge_state power_get_charge_state(void);
 void power_set_idle(bool idle);
 void power_ip5306_keepalive_tick(bool enabled);
+void power_ip5306_keepalive_kick(void);
 void power_set_rgb_enabled(bool enabled);
 bool power_ip5306_read_reg(uint8_t reg, uint8_t *value);
 

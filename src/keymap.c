@@ -12,10 +12,10 @@ static bool numlock_enabled = true;
 static const uint8_t numeric_layer[KEYBOARD_MATRIX_ROWS][KEYBOARD_MATRIX_COLS] = {
 	{ HID_KEY_ESC,      HID_KEY_NONE,       HID_KEY_NONE,       HID_KEY_NONE },
 	{ HID_KEY_NUMLOCK,  HID_KEY_KPSLASH,    HID_KEY_KPASTERISK, HID_KEY_KPMINUS },
-	{ HID_KEY_KP_7,     HID_KEY_KP_8,       HID_KEY_KP_9,       HID_KEY_KPPLUS },
-	{ HID_KEY_KP_4,     HID_KEY_KP_5,       HID_KEY_KP_6,       HID_KEY_KPPLUS },
-	{ HID_KEY_KP_1,     HID_KEY_KP_2,       HID_KEY_KP_3,       HID_KEY_KPPLUS },
-	{ HID_KEY_KP_0,     HID_KEY_KP_DOT,     HID_KEY_NONE,       HID_KEY_KPENTER },
+	{ HID_KEY_7,        HID_KEY_8,          HID_KEY_9,          HID_KEY_KPPLUS },
+	{ HID_KEY_4,        HID_KEY_5,          HID_KEY_6,          HID_KEY_KPPLUS },
+	{ HID_KEY_1,        HID_KEY_2,          HID_KEY_3,          HID_KEY_KPPLUS },
+	{ HID_KEY_0,        HID_KEY_DOT,        HID_KEY_NONE,       HID_KEY_KPENTER },
 };
 
 static const uint8_t nav_layer[KEYBOARD_MATRIX_ROWS][KEYBOARD_MATRIX_COLS] = {

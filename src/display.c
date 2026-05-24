@@ -15,11 +15,19 @@
 LOG_MODULE_REGISTER(app_display, LOG_LEVEL_INF);
 
 #define CTRL_NODE DT_NODELABEL(board_controls)
-#define BATTERY_FILL_MAX_WIDTH 116
 #define SCREEN_W 320
 #define SCREEN_H 240
 #define VISIBLE_Y 34
 #define DISPLAY_IDLE_TICK_MS 1000
+#define COLOR_BG 0x0b0f14
+#define COLOR_CARD 0x111827
+#define COLOR_BORDER 0x1f2937
+#define COLOR_TEXT 0xeaf2ff
+#define COLOR_MUTED 0x7c8a99
+#define COLOR_USB 0x22c55e
+#define COLOR_BLE 0x38bdf8
+#define COLOR_LAYER 0xf59e0b
+#define COLOR_LOW_BATTERY 0xef4444
 
 static const struct device *const display_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
 static const struct gpio_dt_spec screen_bl =
@@ -28,28 +36,24 @@ static const struct gpio_dt_spec screen_bl =
 static lv_obj_t *time_label;
 static lv_obj_t *date_label;
 static lv_obj_t *mode_label;
-static lv_obj_t *link_label;
 static lv_obj_t *battery_label;
-static lv_obj_t *battery_box;
-static lv_obj_t *battery_fill;
-static lv_obj_t *charge_label;
 static lv_obj_t *layer_label;
-static lv_obj_t *status_label;
+static lv_obj_t *layer_value_label;
 static lv_obj_t *mode_status_label;
 static lv_obj_t *mode_panel;
-static lv_obj_t *battery_panel;
-static lv_obj_t *link_panel;
 static lv_obj_t *layer_panel;
-static lv_obj_t *battery_tip;
+static lv_obj_t *ble_label;
+static lv_obj_t *battery_state_label;
 static lv_style_t style_screen;
 static lv_style_t style_text;
 static lv_style_t style_muted;
-static lv_style_t style_big;
+static lv_style_t style_time;
+static lv_style_t style_card_title;
+static lv_style_t style_card_value;
+static lv_style_t style_card_value_small;
 static lv_style_t style_panel;
 static lv_style_t style_panel_accent;
-static lv_style_t style_box;
-static lv_style_t style_fill;
-static lv_style_t style_icon;
+static lv_style_t style_layer_accent;
 static bool display_ready;
 static bool display_idle;
 static int64_t next_display_idle_tick_ms;
@@ -60,10 +64,27 @@ static int last_display_battery_mv = -999;
 static int last_display_charge_state = -1;
 static int last_display_hour = -1;
 static int last_display_minute = -1;
-static int last_display_second = -1;
 static int last_display_day = -1;
 static bool last_display_connected;
 static bool last_display_numlock;
+
+static lv_color_t mode_status_color(enum app_mode mode, bool connected,
+				    bool numlock)
+{
+	if (!numlock) {
+		return lv_color_hex(COLOR_LAYER);
+	}
+
+	switch (mode) {
+	case APP_MODE_USB:
+		return lv_color_hex(connected ? COLOR_USB : COLOR_LOW_BATTERY);
+	case APP_MODE_BLE:
+		return lv_color_hex(COLOR_BLE);
+	case APP_MODE_OFF:
+	default:
+		return lv_color_hex(COLOR_MUTED);
+	}
+}
 
 static void screen_backlight_probe(void)
 {
@@ -122,18 +143,33 @@ static const char *mode_name(enum app_mode mode)
 	}
 }
 
-static const char *charge_state_name(enum power_charge_state charge_state)
+static const char *battery_prefix(enum power_charge_state charge_state,
+				  enum app_mode mode, bool connected)
 {
 	switch (charge_state) {
-	case POWER_CHARGE_DISCHARGING:
-		return "BAT";
 	case POWER_CHARGE_CHARGING:
-		return "CHG";
 	case POWER_CHARGE_FULL:
-		return "FULL";
+		return "USB";
+	case POWER_CHARGE_DISCHARGING:
+		return (mode == APP_MODE_USB && connected) ? "USB" : "BAT";
 	case POWER_CHARGE_UNKNOWN:
 	default:
 		return "---";
+	}
+}
+
+static const char *battery_state_name(enum power_charge_state charge_state)
+{
+	switch (charge_state) {
+	case POWER_CHARGE_DISCHARGING:
+		return "Discharging";
+	case POWER_CHARGE_CHARGING:
+		return "Charging";
+	case POWER_CHARGE_FULL:
+		return "Full";
+	case POWER_CHARGE_UNKNOWN:
+	default:
+		return "Unknown";
 	}
 }
 
@@ -242,62 +278,61 @@ static int64_t build_time_seconds(void)
 static void init_styles(void)
 {
 	lv_style_init(&style_screen);
-	lv_style_set_bg_color(&style_screen, lv_color_hex(0x05070b));
+	lv_style_set_bg_color(&style_screen, lv_color_hex(COLOR_BG));
 	lv_style_set_bg_opa(&style_screen, LV_OPA_COVER);
 	lv_style_set_pad_all(&style_screen, 0);
 
 	lv_style_init(&style_text);
-	lv_style_set_text_color(&style_text, lv_color_hex(0xe8eef7));
+	lv_style_set_text_color(&style_text, lv_color_hex(COLOR_TEXT));
 	lv_style_set_bg_opa(&style_text, LV_OPA_TRANSP);
 	lv_style_set_pad_all(&style_text, 0);
-	lv_style_set_text_font(&style_text, &lv_font_montserrat_14);
+	lv_style_set_text_font(&style_text, &lv_font_montserrat_18);
 
 	lv_style_init(&style_muted);
-	lv_style_set_text_color(&style_muted, lv_color_hex(0x7f8ca3));
+	lv_style_set_text_color(&style_muted, lv_color_hex(COLOR_MUTED));
 	lv_style_set_bg_opa(&style_muted, LV_OPA_TRANSP);
 	lv_style_set_pad_all(&style_muted, 0);
 	lv_style_set_text_font(&style_muted, &lv_font_montserrat_14);
 
-	lv_style_init(&style_big);
-	lv_style_set_text_color(&style_big, lv_color_hex(0xffffff));
-	lv_style_set_bg_opa(&style_big, LV_OPA_TRANSP);
-	lv_style_set_pad_all(&style_big, 0);
-	lv_style_set_text_font(&style_big, &lv_font_montserrat_14);
+	lv_style_init(&style_time);
+	lv_style_set_text_color(&style_time, lv_color_hex(COLOR_TEXT));
+	lv_style_set_bg_opa(&style_time, LV_OPA_TRANSP);
+	lv_style_set_pad_all(&style_time, 0);
+	lv_style_set_text_font(&style_time, &lv_font_montserrat_18);
+
+	lv_style_init(&style_card_title);
+	lv_style_set_text_color(&style_card_title, lv_color_hex(COLOR_MUTED));
+	lv_style_set_bg_opa(&style_card_title, LV_OPA_TRANSP);
+	lv_style_set_pad_all(&style_card_title, 0);
+	lv_style_set_text_font(&style_card_title, &lv_font_montserrat_18);
+
+	lv_style_init(&style_card_value);
+	lv_style_set_text_color(&style_card_value, lv_color_hex(COLOR_TEXT));
+	lv_style_set_bg_opa(&style_card_value, LV_OPA_TRANSP);
+	lv_style_set_pad_all(&style_card_value, 0);
+	lv_style_set_text_font(&style_card_value, &lv_font_montserrat_24);
+
+	lv_style_init(&style_card_value_small);
+	lv_style_set_text_color(&style_card_value_small, lv_color_hex(COLOR_TEXT));
+	lv_style_set_bg_opa(&style_card_value_small, LV_OPA_TRANSP);
+	lv_style_set_pad_all(&style_card_value_small, 0);
+	lv_style_set_text_font(&style_card_value_small, &lv_font_montserrat_24);
 
 	lv_style_init(&style_panel);
-	lv_style_set_bg_color(&style_panel, lv_color_hex(0x101722));
+	lv_style_set_bg_color(&style_panel, lv_color_hex(COLOR_CARD));
 	lv_style_set_bg_opa(&style_panel, LV_OPA_COVER);
-	lv_style_set_border_color(&style_panel, lv_color_hex(0x243247));
+	lv_style_set_border_color(&style_panel, lv_color_hex(COLOR_BORDER));
 	lv_style_set_border_width(&style_panel, 1);
 	lv_style_set_radius(&style_panel, 6);
 	lv_style_set_pad_all(&style_panel, 0);
 
 	lv_style_init(&style_panel_accent);
-	lv_style_set_border_color(&style_panel_accent, lv_color_hex(0x39a7ff));
+	lv_style_set_border_color(&style_panel_accent, lv_color_hex(COLOR_USB));
 	lv_style_set_border_width(&style_panel_accent, 2);
 
-	lv_style_init(&style_box);
-	lv_style_set_bg_color(&style_box, lv_color_hex(0x05070b));
-	lv_style_set_bg_opa(&style_box, LV_OPA_COVER);
-	lv_style_set_border_color(&style_box, lv_color_hex(0xb9c7dc));
-	lv_style_set_border_width(&style_box, 2);
-	lv_style_set_radius(&style_box, 3);
-	lv_style_set_pad_all(&style_box, 0);
-
-	lv_style_init(&style_fill);
-	lv_style_set_bg_color(&style_fill, lv_color_hex(0x32d583));
-	lv_style_set_bg_opa(&style_fill, LV_OPA_COVER);
-	lv_style_set_border_width(&style_fill, 0);
-	lv_style_set_radius(&style_fill, 2);
-	lv_style_set_pad_all(&style_fill, 0);
-
-	lv_style_init(&style_icon);
-	lv_style_set_bg_color(&style_icon, lv_color_hex(0x182333));
-	lv_style_set_bg_opa(&style_icon, LV_OPA_COVER);
-	lv_style_set_border_color(&style_icon, lv_color_hex(0x39a7ff));
-	lv_style_set_border_width(&style_icon, 1);
-	lv_style_set_radius(&style_icon, 14);
-	lv_style_set_pad_all(&style_icon, 0);
+	lv_style_init(&style_layer_accent);
+	lv_style_set_border_color(&style_layer_accent, lv_color_hex(COLOR_LAYER));
+	lv_style_set_border_width(&style_layer_accent, 2);
 }
 
 static lv_obj_t *make_label(lv_obj_t *parent, int x, int y, int w,
@@ -351,47 +386,30 @@ int app_display_init(void)
 	lv_obj_add_style(screen, &style_screen, 0);
 	lv_obj_set_size(screen, SCREEN_W, SCREEN_H);
 
-	time_label = make_label(screen, 12, VISIBLE_Y + 4, 112, &style_big);
-	date_label = make_label(screen, 12, VISIBLE_Y + 26, 118, &style_muted);
+	time_label = make_label(screen, 16, VISIBLE_Y + 1, 70, &style_time);
+	date_label = make_label(screen, 16, VISIBLE_Y + 30, 122, &style_text);
+	lv_obj_set_style_text_color(date_label, lv_color_hex(COLOR_TEXT), 0);
+	battery_label = make_label(screen, 194, VISIBLE_Y + 4, 104, &style_time);
+	lv_obj_set_style_text_align(battery_label, LV_TEXT_ALIGN_RIGHT, 0);
+	battery_state_label = make_label(screen, 164, VISIBLE_Y + 32, 134,
+					 &style_text);
+	lv_obj_set_style_text_align(battery_state_label, LV_TEXT_ALIGN_RIGHT, 0);
 
-	link_panel = make_panel(screen, 182, VISIBLE_Y + 4, 126, 42);
-	link_label = make_label(link_panel, 8, 12, 110, &style_text);
-	lv_obj_set_style_text_align(link_label, LV_TEXT_ALIGN_RIGHT, 0);
-
-	mode_panel = make_panel(screen, 12, VISIBLE_Y + 60, 136, 68);
+	mode_panel = make_panel(screen, 16, VISIBLE_Y + 82, 176, 78);
 	lv_obj_add_style(mode_panel, &style_panel_accent, 0);
-	mode_label = make_label(mode_panel, 12, 10, 112, &style_big);
-	lv_obj_set_style_text_align(mode_label, LV_TEXT_ALIGN_CENTER, 0);
-	mode_status_label = make_label(mode_panel, 12, 40, 112, &style_muted);
-	lv_obj_set_style_text_align(mode_status_label, LV_TEXT_ALIGN_CENTER, 0);
+	mode_label = make_label(mode_panel, 12, 10, 152, &style_card_title);
+	mode_status_label = make_label(mode_panel, 12, 39, 152,
+				       &style_card_value_small);
 
-	battery_panel = make_panel(screen, 164, VISIBLE_Y + 60, 144, 68);
-	battery_label = make_label(battery_panel, 10, 6, 122, &style_text);
-	battery_box = lv_obj_create(battery_panel);
-	lv_obj_remove_style_all(battery_box);
-	lv_obj_add_style(battery_box, &style_box, 0);
-	lv_obj_set_pos(battery_box, 10, 30);
-	lv_obj_set_size(battery_box, 124, 18);
+	layer_panel = make_panel(screen, 204, VISIBLE_Y + 82, 100, 78);
+	lv_obj_add_style(layer_panel, &style_layer_accent, 0);
+	layer_label = make_label(layer_panel, 12, 10, 76, &style_card_title);
+	lv_label_set_text(layer_label, "LAYER");
+	layer_value_label = make_label(layer_panel, 12, 37, 76,
+				       &style_card_value);
 
-	battery_fill = lv_obj_create(battery_panel);
-	lv_obj_remove_style_all(battery_fill);
-	lv_obj_add_style(battery_fill, &style_fill, 0);
-	lv_obj_set_pos(battery_fill, 14, 34);
-	lv_obj_set_size(battery_fill, 1, 10);
-
-	battery_tip = lv_obj_create(battery_panel);
-	lv_obj_remove_style_all(battery_tip);
-	lv_obj_add_style(battery_tip, &style_box, 0);
-	lv_obj_set_pos(battery_tip, 134, 34);
-	lv_obj_set_size(battery_tip, 4, 10);
-
-	charge_label = make_label(battery_panel, 10, 50, 122, &style_muted);
-	lv_obj_set_style_text_align(charge_label, LV_TEXT_ALIGN_RIGHT, 0);
-
-	layer_panel = make_panel(screen, 12, VISIBLE_Y + 140, 296, 32);
-	layer_label = make_label(layer_panel, 10, 6, 48, &style_big);
-
-	status_label = make_label(layer_panel, 72, 6, 204, &style_muted);
+	ble_label = make_label(screen, 16, VISIBLE_Y + 63, 180, &style_text);
+	lv_obj_add_flag(ble_label, LV_OBJ_FLAG_HIDDEN);
 
 	build_epoch_seconds = build_time_seconds();
 	lv_timer_handler();
@@ -411,7 +429,6 @@ void display_update_status(enum app_mode mode, int battery_percent,
 	int hour;
 	int minute;
 	int second;
-	int fill_width;
 	int64_t now;
 	bool time_changed;
 	bool mode_changed;
@@ -435,7 +452,6 @@ void display_update_status(enum app_mode mode, int battery_percent,
 	epoch_to_date(now, &year, &month, &day, &hour, &minute, &second);
 	time_changed = hour != last_display_hour ||
 		       minute != last_display_minute ||
-		       second != last_display_second ||
 		       day != last_display_day;
 	mode_changed = mode != last_display_mode ||
 		       connected != last_display_connected;
@@ -450,81 +466,79 @@ void display_update_status(enum app_mode mode, int battery_percent,
 	}
 
 	if (time_changed) {
-		lv_label_set_text_fmt(time_label, "%02d:%02d:%02d",
-				      hour, minute, second);
+		lv_label_set_text_fmt(time_label, "%02d:%02d", hour, minute);
 		lv_label_set_text_fmt(date_label, "%04d-%02d-%02d",
 				      year, month, day);
+		lv_obj_set_style_text_color(time_label, lv_color_hex(COLOR_TEXT), 0);
+		lv_obj_set_style_text_color(date_label, lv_color_hex(COLOR_TEXT), 0);
 		last_display_hour = hour;
 		last_display_minute = minute;
-		last_display_second = second;
 		last_display_day = day;
 	}
 
 	if (mode_changed) {
-		lv_label_set_text(mode_label, mode_name(mode));
+		lv_color_t color = mode_status_color(mode, connected, numlock);
+
+		lv_label_set_text_fmt(mode_label, "%s MODE", mode_name(mode));
 		if (mode == APP_MODE_BLE) {
-			lv_label_set_text(link_label,
-					  connected ? "BT LINK" : "BT SCAN");
 			lv_label_set_text(mode_status_label,
 					  connected ? "CONNECTED" : "SEARCHING");
-			lv_label_set_text(status_label,
-					  connected ? "BLE ACTIVE" : "BLE IDLE");
+			lv_label_set_text(ble_label, "");
 		} else if (mode == APP_MODE_USB) {
-			lv_label_set_text(link_label,
-					  connected ? "USB LINK" : "USB WAIT");
 			lv_label_set_text(mode_status_label,
 					  connected ? "CONNECTED" : "WAITING");
-			lv_label_set_text(status_label,
-					  connected ? "USB HID" : "USB IDLE");
+			lv_label_set_text(ble_label, "");
 		} else {
-			lv_label_set_text(link_label, "OFF");
 			lv_label_set_text(mode_status_label, "SLEEP");
-			lv_label_set_text(status_label, "POWER OFF");
+			lv_label_set_text(ble_label, "");
 		}
+		lv_obj_set_style_border_color(mode_panel, color, 0);
+		lv_obj_set_style_text_color(mode_label, color, 0);
+		lv_obj_set_style_text_color(mode_status_label, color, 0);
+		lv_label_set_text(layer_value_label, numlock ? "NUM" : "NAV");
+		lv_obj_set_style_border_color(layer_panel, color, 0);
+		lv_obj_set_style_text_color(layer_label, color, 0);
+		lv_obj_set_style_text_color(layer_value_label, color, 0);
+		lv_obj_set_style_text_color(ble_label,
+					    mode == APP_MODE_BLE ?
+					    lv_color_hex(COLOR_BLE) :
+					    lv_color_hex(COLOR_MUTED), 0);
 		last_display_mode = mode;
 		last_display_connected = connected;
 	}
 
 	if (battery_changed || mode_changed) {
 		if (battery_percent >= 0) {
-			lv_label_set_text_fmt(battery_label, "BAT %d%%",
+			lv_label_set_text_fmt(battery_label, "%s %d%%",
+					      battery_prefix(charge_state, mode,
+							     connected),
 					      battery_percent);
-			fill_width = (battery_percent * BATTERY_FILL_MAX_WIDTH) / 100;
-			if (fill_width < 1 && battery_percent > 0) {
-				fill_width = 1;
-			}
 		} else {
-			lv_label_set_text(battery_label, "BAT ---");
-			fill_width = 1;
+			lv_label_set_text_fmt(battery_label, "%s ---",
+					      battery_prefix(charge_state, mode,
+							     connected));
 		}
-		lv_obj_set_size(battery_fill, fill_width, 10);
-		if (battery_percent >= 60) {
-			lv_obj_set_style_bg_color(battery_fill,
-						  lv_color_hex(0x32d583), 0);
-		} else if (battery_percent >= 25) {
-			lv_obj_set_style_bg_color(battery_fill,
-						  lv_color_hex(0xfdb022), 0);
-		} else {
-			lv_obj_set_style_bg_color(battery_fill,
-						  lv_color_hex(0xf04438), 0);
-		}
-
-		if (battery_mv >= 0) {
-			lv_label_set_text_fmt(charge_label, "%s %d.%02dV",
-					      charge_state_name(charge_state),
-					      battery_mv / 1000,
-					      (battery_mv % 1000) / 10);
-		} else {
-			lv_label_set_text_fmt(charge_label, "%s --.--V",
-					      charge_state_name(charge_state));
-		}
+		lv_label_set_text(battery_state_label,
+				  battery_state_name(charge_state));
+		lv_obj_set_style_text_color(battery_label,
+					    lv_color_hex(COLOR_TEXT), 0);
+		lv_obj_set_style_text_color(battery_state_label,
+					    lv_color_hex(COLOR_TEXT), 0);
 		last_display_battery = battery_percent;
 		last_display_battery_mv = battery_mv;
 		last_display_charge_state = charge_state;
 	}
 
 	if (numlock_changed) {
-		lv_label_set_text(layer_label, numlock ? "123" : "NAV");
+		lv_color_t color = mode_status_color(mode, connected, numlock);
+
+		lv_label_set_text(layer_value_label, numlock ? "NUM" : "NAV");
+		lv_obj_set_style_border_color(mode_panel, color, 0);
+		lv_obj_set_style_text_color(mode_label, color, 0);
+		lv_obj_set_style_text_color(mode_status_label, color, 0);
+		lv_obj_set_style_border_color(layer_panel, color, 0);
+		lv_obj_set_style_text_color(layer_label, color, 0);
+		lv_obj_set_style_text_color(layer_value_label, color, 0);
 		last_display_numlock = numlock;
 	}
 	lv_timer_handler();

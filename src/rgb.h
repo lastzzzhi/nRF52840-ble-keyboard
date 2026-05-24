@@ -8,6 +8,7 @@
 int rgb_init(void);
 void rgb_show_status(enum app_mode mode, bool connected, bool numlock, bool idle);
 void rgb_set_low_battery(bool low_battery);
+void rgb_recover_after_power_event(void);
 void rgb_tick(void);
 void rgb_off(void);
 

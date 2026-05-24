@@ -20,6 +20,8 @@
 #include <zephyr/usb/class/usb_hid.h>
 #include <zephyr/usb/usb_device.h>
 
+#include "power.h"
+
 LOG_MODULE_REGISTER(hid_transport, LOG_LEVEL_INF);
 
 #define DEVICE_NAME CONFIG_BT_DEVICE_NAME
@@ -492,6 +494,7 @@ static void usb_status_cb(enum usb_dc_status_code status, const uint8_t *param)
 	case USB_DC_RESET:
 	case USB_DC_ERROR:
 		usb_ready = false;
+		power_ip5306_keepalive_kick();
 		break;
 	default:
 		break;

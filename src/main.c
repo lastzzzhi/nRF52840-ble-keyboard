@@ -49,6 +49,7 @@ static uint8_t pressed_usage[KEYBOARD_MATRIX_ROWS][KEYBOARD_MATRIX_COLS];
 static atomic_t encoder_pending_steps;
 static struct k_work encoder_work;
 static int active_encoder_pair = -1;
+static bool status_refresh_requested;
 
 static struct encoder_line encoder_lines[] = {
 	{
@@ -243,6 +244,7 @@ static void process_key_event(const struct keyboard_event *event)
 	if (layer_changed) {
 		rgb_show_status(hid_transport_get_mode(), hid_transport_connected(),
 				keymap_numlock_enabled(), key_wakeup_pm_is_idle());
+		status_refresh_requested = true;
 	}
 }
 
@@ -420,6 +422,7 @@ int main(void)
 	int64_t next_status = 0;
 	enum app_mode mode = APP_MODE_BLE;
 	bool last_idle = false;
+	bool last_connected = false;
 
 	LOG_INF("AI BLE Keyboard starting");
 
@@ -449,6 +452,7 @@ int main(void)
 	}
 
 	hid_transport_set_mode(mode);
+	last_connected = hid_transport_connected();
 
 	while (true)
 	{
@@ -456,6 +460,7 @@ int main(void)
 		int event_count;
 		int64_t now = k_uptime_get();
 		bool idle_now;
+		bool connected_now;
 
 		if (new_mode != mode)
 		{
@@ -493,6 +498,10 @@ int main(void)
 			{
 				process_key_event(&events[i]);
 			}
+			if (status_refresh_requested) {
+				next_status = 0;
+				status_refresh_requested = false;
+			}
 			if (keyboard_report_has_keys())
 			{
 				key_wakeup_pm_note_activity(k_uptime_get());
@@ -500,6 +509,15 @@ int main(void)
 			encoder_sample();
 		}
 		hid_transport_tick();
+		connected_now = hid_transport_connected();
+		if (connected_now != last_connected) {
+			power_ip5306_keepalive_kick();
+			rgb_show_status(mode, connected_now,
+					keymap_numlock_enabled(), idle_now);
+			rgb_recover_after_power_event();
+			next_status = 0;
+			last_connected = connected_now;
+		}
 		app_display_tick();
 		rgb_tick();
 		power_ip5306_keepalive_tick(mode != APP_MODE_OFF);

@@ -14,6 +14,9 @@ LOG_MODULE_REGISTER(rgb, LOG_LEVEL_INF);
 #define STRIP_NODE DT_ALIAS(led_strip)
 #define RGB_LED_COUNT DT_PROP(STRIP_NODE, chain_length)
 #define RGB_IDLE_REFRESH_MS 100
+#define RGB_ACTIVE_REFRESH_MS 1000
+#define RGB_RECOVERY_REFRESH_MS 100
+#define RGB_RECOVERY_WINDOW_MS 2500
 #define RGB_IDLE_BREATH_PERIOD_MS 2400
 #define RGB_IDLE_MIN_SCALE 22
 #define RGB_IDLE_MAX_SCALE 78
@@ -28,7 +31,8 @@ static bool last_numlock;
 static bool last_idle;
 static bool low_battery;
 static bool last_state_valid;
-static int64_t next_idle_refresh_ms;
+static int64_t next_refresh_ms;
+static int64_t recovery_until_ms;
 
 static uint8_t scale_channel(uint8_t value, uint8_t scale)
 {
@@ -107,7 +111,6 @@ static void rgb_render(int64_t now)
 		color.r = scale_channel(color.r, scale);
 		color.g = scale_channel(color.g, scale);
 		color.b = scale_channel(color.b, scale);
-		next_idle_refresh_ms = now + RGB_IDLE_REFRESH_MS;
 	}
 
 	power_set_rgb_enabled(true);
@@ -115,6 +118,13 @@ static void rgb_render(int64_t now)
 		pixels[i] = color;
 	}
 	(void)led_strip_update_rgb(strip, pixels, ARRAY_SIZE(pixels));
+	if (last_idle) {
+		next_refresh_ms = now + RGB_IDLE_REFRESH_MS;
+	} else if (now < recovery_until_ms) {
+		next_refresh_ms = now + RGB_RECOVERY_REFRESH_MS;
+	} else {
+		next_refresh_ms = now + RGB_ACTIVE_REFRESH_MS;
+	}
 }
 
 int rgb_init(void)
@@ -166,16 +176,24 @@ void rgb_set_low_battery(bool low_battery_enabled)
 	rgb_render(k_uptime_get());
 }
 
+void rgb_recover_after_power_event(void)
+{
+	int64_t now = k_uptime_get();
+
+	recovery_until_ms = now + RGB_RECOVERY_WINDOW_MS;
+	rgb_render(now);
+}
+
 void rgb_tick(void)
 {
 	int64_t now;
 
-	if (!last_state_valid || !last_idle) {
+	if (!last_state_valid) {
 		return;
 	}
 
 	now = k_uptime_get();
-	if (now < next_idle_refresh_ms) {
+	if (now < next_refresh_ms) {
 		return;
 	}
 
@@ -186,7 +204,8 @@ void rgb_off(void)
 {
 	last_state_valid = false;
 	last_idle = false;
-	next_idle_refresh_ms = 0;
+	next_refresh_ms = 0;
+	recovery_until_ms = 0;
 
 	if (device_is_ready(strip)) {
 		memset(pixels, 0, sizeof(pixels));

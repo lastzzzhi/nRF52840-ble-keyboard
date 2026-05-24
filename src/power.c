@@ -271,6 +271,20 @@ void power_ip5306_keepalive_tick(bool enabled)
 	}
 }
 
+void power_ip5306_keepalive_kick(void)
+{
+	int64_t now = k_uptime_get();
+
+	if (!gpio_is_ready_dt(&ip5306_wakeup)) {
+		return;
+	}
+
+	(void)gpio_pin_set_dt(&ip5306_wakeup, 1);
+	keepalive_active = true;
+	keepalive_release_ms = now + IP5306_KEEPALIVE_PULSE_MS;
+	next_keepalive_ms = keepalive_release_ms + IP5306_KEEPALIVE_INTERVAL_MS;
+}
+
 bool power_ip5306_read_reg(uint8_t reg, uint8_t *value)
 {
 	if ((value == NULL) || !device_is_ready(ip5306_i2c)) {
