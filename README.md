@@ -33,14 +33,18 @@ The generated merged HEX file is `build\merged.hex`.
 - EC11 rotation sends Consumer Control volume up/down; pressing the encoder switch sends mute.
 - USB mode shows green RGB status and sends only USB HID reports.
 - BLE mode shows blue RGB status, advertises as `AI_BLE_KEYBOARD`, stores bonds in NVS, and sends only BLE HID reports.
-- The ST7789V status display uses a 320 x 172 active area with a 34-line Y offset. It shows mode, connection state, battery percentage/voltage, NumLock state, and date/time.
+- BLE advertising stays fast for 60 seconds after entering BLE mode, then falls back to slow advertising if no host is connected.
+- The ST7789V status display uses a 320 x 172 active area with a 34-line Y offset. It shows mode, connection state, battery percentage/voltage, IP5306 charge state, NumLock state, and date/time.
+- Date/time currently uses the build timestamp plus device uptime. It will drift after power-off until a future host-side time sync tool is added.
 
 ## Power behavior
 
-- Battery percentage is calibrated as 4.2 V full and 3.3 V empty.
+- Battery percentage is calibrated as 4.2 V full and 3.3 V empty. IP5306 status is displayed as `BAT`, `CHG`, or `FULL`; a charging battery at 100% and at least 4.18 V is shown as full.
 - The IP5306 keepalive pulse stays enabled while the firmware is in BLE or USB mode so the power module does not shut down under light load.
-- The firmware does not use System OFF or deep sleep. After about 2 seconds without key activity, matrix scanning enters an idle state and arms column GPIO interrupts. Any key press wakes the main loop and restores the 5 ms active scan interval.
-- BLE and USB links are kept alive during matrix idle. Switching MODE releases all pressed keys before changing the active HID transport to avoid stuck keys.
+- The firmware does not use System OFF or deep sleep. After about 60 seconds without key activity, matrix scanning enters a shallow idle state and arms column GPIO interrupts. Any key press wakes the main loop and restores the 5 ms active scan interval.
+- During shallow idle, the display backlight is turned off, display blanking is enabled, RGB status uses low-brightness breathing, LVGL runs at a reduced tick rate, and battery ADC sampling slows from 30 seconds to 120 seconds.
+- BLE and USB links are kept alive during idle. BLE connections request a modest idle-friendly connection interval after connecting, and MODE switching releases all pressed keys before changing the active HID transport to avoid stuck keys.
+- RGB brightness is reduced when battery level is below 20%.
 
 ## Runtime logs
 
@@ -54,6 +58,19 @@ The generated merged HEX file is `build\merged.hex`.
 - Idle wakeup: wait for `Keyboard idle: matrix wakeup armed`, press any key, and confirm `Keyboard wakeup: active scan`.
 - MODE switch: confirm USB disconnects BLE intentionally and BLE starts advertising again when switched back.
 - Power: run on battery for at least 30 minutes and confirm the IP5306 does not shut down under idle load.
+
+## Final validation checklist
+
+- USB enumerates as an HID keyboard and numeric keypad input works.
+- USB Boot Protocol and Report Protocol both continue to send keyboard reports.
+- BLE can be discovered, paired, encrypted, disconnected, and reconnected.
+- BLE HID keyboard reports and Consumer Control volume/mute reports work.
+- MODE switching releases pressed keys and does not send reports to the old transport.
+- NumLock toggles the local numeric/navigation layer and updates the display/RGB state.
+- Encoder rotation sends volume up/down; encoder press sends mute.
+- Battery voltage, percent, and `BAT`/`CHG`/`FULL` display correctly.
+- After 60 seconds idle, the screen blanks, RGB breathes at low brightness, and a key press wakes the keyboard promptly.
+- In BLE mode with no host connected, fast advertising changes to slow advertising after 60 seconds.
 
 ## Hardware notes
 

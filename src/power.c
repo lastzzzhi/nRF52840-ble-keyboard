@@ -8,12 +8,17 @@
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(power, LOG_LEVEL_INF);
 
 #define CTRL_NODE DT_NODELABEL(board_controls)
 #define USER_NODE DT_PATH(zephyr_user)
 #define IP5306_I2C_ADDR 0x75
+#define IP5306_REG_SYS_0 0x70
+#define IP5306_REG_SYS_1 0x71
+#define IP5306_STATE_CHARGE BIT(3)
+#define IP5306_STATE_FULL BIT(3)
 #define BATTERY_DIVIDER_NUM 200
 #define BATTERY_DIVIDER_DEN 100
 #define BATTERY_EMPTY_MV 3300
@@ -21,7 +26,9 @@ LOG_MODULE_REGISTER(power, LOG_LEVEL_INF);
 #define BATTERY_ADC_SETTLE_MS 50
 #define BATTERY_ADC_SAMPLES 4
 #define BATTERY_ADC_START_DELAY_MS 3000
+/* Sample less often while idle; wakeup forces an immediate fresh sample. */
 #define BATTERY_ADC_INTERVAL_MS 30000
+#define BATTERY_ADC_IDLE_INTERVAL_MS 120000
 #define BATTERY_ADC_RUNTIME_ENABLED 1
 #define IP5306_KEEPALIVE_INTERVAL_MS 10000
 #define IP5306_KEEPALIVE_PULSE_MS 80
@@ -38,10 +45,12 @@ static const struct device *const ip5306_i2c = DEVICE_DT_GET(DT_NODELABEL(i2c0))
 
 static int last_battery_mv = -1;
 static int last_battery_percent = -1;
+static enum power_charge_state last_charge_state = POWER_CHARGE_UNKNOWN;
 static int64_t next_battery_sample_ms;
 static int64_t next_keepalive_ms;
 static int64_t keepalive_release_ms;
 static bool keepalive_active;
+static bool power_idle;
 
 int power_init(void)
 {
@@ -113,7 +122,8 @@ int power_get_battery_mv(void)
 		return last_battery_mv;
 	}
 
-	next_battery_sample_ms = now + BATTERY_ADC_INTERVAL_MS;
+	next_battery_sample_ms = now + (power_idle ? BATTERY_ADC_IDLE_INTERVAL_MS :
+					BATTERY_ADC_INTERVAL_MS);
 
 	if (!adc_is_ready_dt(&bat_adc)) {
 		return last_battery_mv;
@@ -173,6 +183,47 @@ int power_get_battery_percent(void)
 
 	last_battery_percent = percent;
 	return last_battery_percent;
+}
+
+void power_set_idle(bool idle)
+{
+	if (power_idle == idle) {
+		return;
+	}
+
+	power_idle = idle;
+	if (!idle) {
+		next_battery_sample_ms = k_uptime_get();
+	}
+}
+
+enum power_charge_state power_get_charge_state(void)
+{
+	uint8_t sys0;
+	uint8_t sys1;
+
+	if (!device_is_ready(ip5306_i2c)) {
+		return last_charge_state;
+	}
+
+	if (i2c_reg_read_byte(ip5306_i2c, IP5306_I2C_ADDR,
+			      IP5306_REG_SYS_1, &sys1) != 0) {
+		return last_charge_state;
+	}
+
+	if ((sys1 & IP5306_STATE_FULL) != 0) {
+		last_charge_state = POWER_CHARGE_FULL;
+		return last_charge_state;
+	}
+
+	if (i2c_reg_read_byte(ip5306_i2c, IP5306_I2C_ADDR,
+			      IP5306_REG_SYS_0, &sys0) != 0) {
+		return last_charge_state;
+	}
+
+	last_charge_state = ((sys0 & IP5306_STATE_CHARGE) != 0) ?
+			    POWER_CHARGE_CHARGING : POWER_CHARGE_DISCHARGING;
+	return last_charge_state;
 }
 
 void power_set_rgb_enabled(bool enabled)

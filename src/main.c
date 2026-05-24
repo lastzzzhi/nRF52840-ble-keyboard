@@ -21,8 +21,9 @@
 LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 
 #define CTRL_NODE DT_NODELABEL(board_controls)
-#define MODE_DEBOUNCE_MS 120
+#define MODE_DEBOUNCE_MS 40
 #define STATUS_INTERVAL_MS 1000
+#define STATUS_IDLE_INTERVAL_MS 10000
 
 static const struct gpio_dt_spec mode_gpio =
 	GPIO_DT_SPEC_GET(CTRL_NODE, mode_gpios);
@@ -418,6 +419,7 @@ int main(void)
 	struct keyboard_event events[8];
 	int64_t next_status = 0;
 	enum app_mode mode = APP_MODE_BLE;
+	bool last_idle = false;
 
 	LOG_INF("AI BLE Keyboard starting");
 
@@ -453,6 +455,7 @@ int main(void)
 		enum app_mode new_mode = read_mode_switch_debounced();
 		int event_count;
 		int64_t now = k_uptime_get();
+		bool idle_now;
 
 		if (new_mode != mode)
 		{
@@ -461,11 +464,23 @@ int main(void)
 			hid_transport_set_mode(mode);
 			clear_keyboard_report();
 			key_wakeup_pm_note_activity_reason(now, "Mode switch activity");
+			app_display_set_idle(false);
+			rgb_show_status(mode, hid_transport_connected(),
+					keymap_numlock_enabled(), false);
+			last_idle = false;
+			next_status = 0;
 			LOG_INF("Mode changed to %s", mode == APP_MODE_BLE ? "BLE" : "USB");
 		}
 
 		key_wakeup_pm_update(mode, now);
-		app_display_set_idle(key_wakeup_pm_is_idle());
+		idle_now = key_wakeup_pm_is_idle();
+		app_display_set_idle(idle_now);
+		power_set_idle(idle_now);
+		if (idle_now != last_idle) {
+			rgb_show_status(mode, hid_transport_connected(),
+					keymap_numlock_enabled(), idle_now);
+			last_idle = idle_now;
+		}
 
 		if (key_wakeup_pm_should_scan(mode))
 		{
@@ -493,17 +508,25 @@ int main(void)
 		{
 			int battery = power_get_battery_percent();
 			int battery_mv = power_get_battery_mv();
+			enum power_charge_state charge_state = power_get_charge_state();
 			bool connected = hid_transport_connected();
 
-			display_update_status(mode, battery, battery_mv, connected,
-								  keymap_numlock_enabled());
+			if (charge_state == POWER_CHARGE_CHARGING &&
+			    battery >= 100 && battery_mv >= 4180) {
+				charge_state = POWER_CHARGE_FULL;
+			}
+
+			rgb_set_low_battery(battery >= 0 && battery < 20);
+			display_update_status(mode, battery, battery_mv, charge_state,
+					      connected, keymap_numlock_enabled());
 			rgb_show_status(mode, connected, keymap_numlock_enabled(),
-					key_wakeup_pm_is_idle());
+					idle_now);
 			if (hid_transport_ble_ready())
 			{
 				bt_bas_set_battery_level(battery >= 0 ? battery : 0);
 			}
-			next_status = now + STATUS_INTERVAL_MS;
+			next_status = now + (idle_now ? STATUS_IDLE_INTERVAL_MS :
+					     STATUS_INTERVAL_MS);
 		}
 
 		k_sleep(key_wakeup_pm_sleep_interval(mode, now));

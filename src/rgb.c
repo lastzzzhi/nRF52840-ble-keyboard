@@ -13,10 +13,12 @@ LOG_MODULE_REGISTER(rgb, LOG_LEVEL_INF);
 
 #define STRIP_NODE DT_ALIAS(led_strip)
 #define RGB_LED_COUNT DT_PROP(STRIP_NODE, chain_length)
-#define RGB_IDLE_REFRESH_MS 50
+#define RGB_IDLE_REFRESH_MS 100
 #define RGB_IDLE_BREATH_PERIOD_MS 2400
 #define RGB_IDLE_MIN_SCALE 22
 #define RGB_IDLE_MAX_SCALE 78
+/* Below 20% battery, keep the same status colors but lower overall brightness. */
+#define RGB_LOW_BATTERY_SCALE 55
 
 static const struct device *const strip = DEVICE_DT_GET(STRIP_NODE);
 static struct led_rgb pixels[RGB_LED_COUNT];
@@ -24,6 +26,7 @@ static enum app_mode last_mode = APP_MODE_OFF;
 static bool last_connected;
 static bool last_numlock;
 static bool last_idle;
+static bool low_battery;
 static bool last_state_valid;
 static int64_t next_idle_refresh_ms;
 
@@ -93,6 +96,11 @@ static void rgb_render(int64_t now)
 	}
 
 	color = status_color(last_mode, last_connected, last_numlock);
+	if (low_battery) {
+		color.r = scale_channel(color.r, RGB_LOW_BATTERY_SCALE);
+		color.g = scale_channel(color.g, RGB_LOW_BATTERY_SCALE);
+		color.b = scale_channel(color.b, RGB_LOW_BATTERY_SCALE);
+	}
 	if (last_idle) {
 		uint8_t scale = idle_breath_scale(now);
 
@@ -146,6 +154,16 @@ void rgb_show_status(enum app_mode mode, bool connected, bool numlock, bool idle
 	}
 
 	rgb_render(now);
+}
+
+void rgb_set_low_battery(bool low_battery_enabled)
+{
+	if (low_battery == low_battery_enabled) {
+		return;
+	}
+
+	low_battery = low_battery_enabled;
+	rgb_render(k_uptime_get());
 }
 
 void rgb_tick(void)

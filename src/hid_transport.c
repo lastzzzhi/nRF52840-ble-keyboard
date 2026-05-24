@@ -34,9 +34,15 @@ LOG_MODULE_REGISTER(hid_transport, LOG_LEVEL_INF);
 #define OUTPUT_REP_KEYS_REF_ID 1
 #define OUTPUT_REPORT_MAX_LEN 1
 #define CONSUMER_REPORT_SIZE 1
-#define BLE_FAST_ADV_TIMEOUT_MS 30000
-#define BLE_ADV_SLOW_INT_MIN 0x0640
-#define BLE_ADV_SLOW_INT_MAX 0x0780
+/* Advertise quickly for initial pairing, then fall back to slower intervals. */
+#define BLE_FAST_ADV_TIMEOUT_MS 60000
+#define BLE_ADV_SLOW_INT_MIN 0x0c80
+#define BLE_ADV_SLOW_INT_MAX 0x1000
+/* Request a modest idle-friendly BLE connection interval after connection. */
+#define BLE_CONN_INT_MIN 24
+#define BLE_CONN_INT_MAX 40
+#define BLE_CONN_LATENCY 4
+#define BLE_CONN_TIMEOUT 400
 #define CONSUMER_QUEUE_LEN 8
 #define CONSUMER_PULSE_MS 10
 #define HID_RETRY_MS 5
@@ -197,6 +203,17 @@ static void advertising_begin_fast_window(void)
 	advertising_restart(false);
 }
 
+static void advertising_resume_window(void)
+{
+	int64_t now = k_uptime_get();
+
+	if (adv_fast_until_ms == 0 || now < adv_fast_until_ms) {
+		advertising_restart(false);
+	} else {
+		advertising_restart(true);
+	}
+}
+
 static void disconnect_ble_connections(void)
 {
 	for (size_t i = 0; i < ARRAY_SIZE(conn_mode); i++) {
@@ -210,6 +227,12 @@ static void disconnect_ble_connections(void)
 static void connected(struct bt_conn *conn, uint8_t err)
 {
 	bt_security_t security = BT_SECURITY_L2;
+	struct bt_le_conn_param conn_param = {
+		.interval_min = BLE_CONN_INT_MIN,
+		.interval_max = BLE_CONN_INT_MAX,
+		.latency = BLE_CONN_LATENCY,
+		.timeout = BLE_CONN_TIMEOUT,
+	};
 
 	if (err) {
 		LOG_WRN("Bluetooth connection failed: 0x%02x", err);
@@ -233,6 +256,11 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	err = bt_conn_set_security(conn, security);
 	if (err) {
 		LOG_WRN("Bluetooth security request failed: %d", err);
+	}
+
+	err = bt_conn_le_param_update(conn, &conn_param);
+	if (err) {
+		LOG_DBG("Bluetooth connection parameter update request failed: %d", err);
 	}
 
 	err = bt_hids_connected(&hids_obj, conn);
@@ -263,7 +291,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	}
 
 	if (current_mode == APP_MODE_BLE) {
-		advertising_begin_fast_window();
+		advertising_resume_window();
 	}
 }
 

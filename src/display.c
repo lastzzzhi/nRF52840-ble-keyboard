@@ -19,6 +19,7 @@ LOG_MODULE_REGISTER(app_display, LOG_LEVEL_INF);
 #define SCREEN_W 320
 #define SCREEN_H 240
 #define VISIBLE_Y 34
+#define DISPLAY_IDLE_TICK_MS 1000
 
 static const struct device *const display_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
 static const struct gpio_dt_spec screen_bl =
@@ -51,10 +52,12 @@ static lv_style_t style_fill;
 static lv_style_t style_icon;
 static bool display_ready;
 static bool display_idle;
+static int64_t next_display_idle_tick_ms;
 static int64_t build_epoch_seconds;
 static int last_display_mode = -1;
 static int last_display_battery = -999;
 static int last_display_battery_mv = -999;
+static int last_display_charge_state = -1;
 static int last_display_hour = -1;
 static int last_display_minute = -1;
 static int last_display_second = -1;
@@ -81,6 +84,30 @@ static void screen_backlight_set(bool on)
 	}
 }
 
+static void screen_power_set(bool on)
+{
+	int err;
+
+	if (!display_ready) {
+		screen_backlight_set(on);
+		return;
+	}
+
+	if (on) {
+		err = display_blanking_off(display_dev);
+		if (err) {
+			LOG_DBG("Display blanking off failed: %d", err);
+		}
+		screen_backlight_set(true);
+	} else {
+		screen_backlight_set(false);
+		err = display_blanking_on(display_dev);
+		if (err) {
+			LOG_DBG("Display blanking on failed: %d", err);
+		}
+	}
+}
+
 static const char *mode_name(enum app_mode mode)
 {
 	switch (mode) {
@@ -92,6 +119,21 @@ static const char *mode_name(enum app_mode mode)
 		return "OFF";
 	default:
 		return "?";
+	}
+}
+
+static const char *charge_state_name(enum power_charge_state charge_state)
+{
+	switch (charge_state) {
+	case POWER_CHARGE_DISCHARGING:
+		return "BAT";
+	case POWER_CHARGE_CHARGING:
+		return "CHG";
+	case POWER_CHARGE_FULL:
+		return "FULL";
+	case POWER_CHARGE_UNKNOWN:
+	default:
+		return "---";
 	}
 }
 
@@ -354,12 +396,14 @@ int app_display_init(void)
 	build_epoch_seconds = build_time_seconds();
 	lv_timer_handler();
 	display_ready = true;
-	display_update_status(APP_MODE_BLE, -1, -1, false, true);
+	display_update_status(APP_MODE_BLE, -1, -1, POWER_CHARGE_UNKNOWN,
+			      false, true);
 	return 0;
 }
 
 void display_update_status(enum app_mode mode, int battery_percent,
-			   int battery_mv, bool connected, bool numlock)
+			   int battery_mv, enum power_charge_state charge_state,
+			   bool connected, bool numlock)
 {
 	int year;
 	int month;
@@ -396,7 +440,8 @@ void display_update_status(enum app_mode mode, int battery_percent,
 	mode_changed = mode != last_display_mode ||
 		       connected != last_display_connected;
 	battery_changed = battery_percent != last_display_battery ||
-			  battery_mv != last_display_battery_mv;
+			  battery_mv != last_display_battery_mv ||
+			  charge_state != last_display_charge_state;
 	numlock_changed = numlock != last_display_numlock;
 
 	if (!time_changed && !mode_changed && !battery_changed &&
@@ -465,14 +510,17 @@ void display_update_status(enum app_mode mode, int battery_percent,
 		}
 
 		if (battery_mv >= 0) {
-			lv_label_set_text_fmt(charge_label, "%d.%02dV",
+			lv_label_set_text_fmt(charge_label, "%s %d.%02dV",
+					      charge_state_name(charge_state),
 					      battery_mv / 1000,
 					      (battery_mv % 1000) / 10);
 		} else {
-			lv_label_set_text(charge_label, "--.--V");
+			lv_label_set_text_fmt(charge_label, "%s --.--V",
+					      charge_state_name(charge_state));
 		}
 		last_display_battery = battery_percent;
 		last_display_battery_mv = battery_mv;
+		last_display_charge_state = charge_state;
 	}
 
 	if (numlock_changed) {
@@ -484,9 +532,24 @@ void display_update_status(enum app_mode mode, int battery_percent,
 
 void app_display_tick(void)
 {
-	if (display_ready) {
-		lv_timer_handler();
+	int64_t now;
+
+	if (!display_ready) {
+		return;
 	}
+
+	if (!display_idle) {
+		lv_timer_handler();
+		return;
+	}
+
+	now = k_uptime_get();
+	if (now < next_display_idle_tick_ms) {
+		return;
+	}
+
+	next_display_idle_tick_ms = now + DISPLAY_IDLE_TICK_MS;
+	lv_timer_handler();
 }
 
 void app_display_set_idle(bool idle)
@@ -496,5 +559,9 @@ void app_display_set_idle(bool idle)
 	}
 
 	display_idle = idle;
-	screen_backlight_set(!idle);
+	screen_power_set(!idle);
+	if (display_ready) {
+		next_display_idle_tick_ms = 0;
+		lv_timer_handler();
+	}
 }
