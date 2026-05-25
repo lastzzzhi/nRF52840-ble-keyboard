@@ -15,8 +15,15 @@ LOG_MODULE_REGISTER(power, LOG_LEVEL_INF);
 #define CTRL_NODE DT_NODELABEL(board_controls)
 #define USER_NODE DT_PATH(zephyr_user)
 #define IP5306_I2C_ADDR 0x75
+#define IP5306_REG_SYS_CTL0 0x00
+#define IP5306_REG_SYS_CTL1 0x01
+#define IP5306_REG_CHG_CTL0 0x20
 #define IP5306_REG_SYS_0 0x70
 #define IP5306_REG_SYS_1 0x71
+#define IP5306_SYS_CTL0_BOOST_ENABLE BIT(5)
+#define IP5306_SYS_CTL0_BOOST_OUTPUT BIT(1)
+#define IP5306_SYS_CTL1_VIN_UNPLUG_BOOST BIT(2)
+#define IP5306_CHG_CTL0_CHARGE_ENABLE BIT(4)
 #define IP5306_STATE_CHARGE BIT(3)
 #define IP5306_STATE_FULL BIT(3)
 #define BATTERY_DIVIDER_NUM 200
@@ -30,8 +37,8 @@ LOG_MODULE_REGISTER(power, LOG_LEVEL_INF);
 #define BATTERY_ADC_INTERVAL_MS 30000
 #define BATTERY_ADC_IDLE_INTERVAL_MS 120000
 #define BATTERY_ADC_RUNTIME_ENABLED 1
-#define IP5306_KEEPALIVE_INTERVAL_MS 1000
-#define IP5306_KEEPALIVE_PULSE_MS 150
+#define IP5306_KEEPALIVE_INTERVAL_MS 15000
+#define IP5306_KEEPALIVE_PULSE_MS 300
 
 static const struct gpio_dt_spec bat_adc_en =
 	GPIO_DT_SPEC_GET(CTRL_NODE, battery_adc_enable_gpios);
@@ -51,6 +58,31 @@ static int64_t next_keepalive_ms;
 static int64_t keepalive_release_ms;
 static bool keepalive_active;
 static bool power_idle;
+
+static void ip5306_set_bits(uint8_t reg, uint8_t mask)
+{
+	uint8_t value;
+	int err;
+
+	if (!device_is_ready(ip5306_i2c)) {
+		return;
+	}
+
+	err = i2c_reg_read_byte(ip5306_i2c, IP5306_I2C_ADDR, reg, &value);
+	if (err) {
+		LOG_WRN("IP5306 read 0x%02x failed: %d", reg, err);
+		return;
+	}
+
+	value |= mask;
+	err = i2c_reg_write_byte(ip5306_i2c, IP5306_I2C_ADDR, reg, value);
+	if (err) {
+		LOG_WRN("IP5306 write 0x%02x failed: %d", reg, err);
+		return;
+	}
+
+	LOG_INF("IP5306 reg 0x%02x |= 0x%02x", reg, mask);
+}
 
 int power_init(void)
 {
@@ -89,6 +121,14 @@ int power_init(void)
 
 	if (!device_is_ready(ip5306_i2c)) {
 		LOG_WRN("IP5306 I2C bus is not ready");
+	} else {
+		ip5306_set_bits(IP5306_REG_SYS_CTL0,
+				IP5306_SYS_CTL0_BOOST_ENABLE |
+				IP5306_SYS_CTL0_BOOST_OUTPUT);
+		ip5306_set_bits(IP5306_REG_SYS_CTL1,
+				IP5306_SYS_CTL1_VIN_UNPLUG_BOOST);
+		ip5306_set_bits(IP5306_REG_CHG_CTL0,
+				IP5306_CHG_CTL0_CHARGE_ENABLE);
 	}
 
 	return 0;

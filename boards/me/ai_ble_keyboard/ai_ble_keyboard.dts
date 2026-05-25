@@ -47,7 +47,7 @@
 		encoder-b-gpios = <&gpio1 6 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
 		battery-adc-enable-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;
 		rgb-power-enable-gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
-		ip5306-wakeup-gpios = <&gpio0 22 GPIO_ACTIVE_HIGH>;
+		ip5306-wakeup-gpios = <&gpio0 22 (GPIO_ACTIVE_LOW | GPIO_OPEN_DRAIN)>;
 		screen-bl-gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;
 	};
 };

@@ -41,7 +41,7 @@ The generated merged HEX file is `build\merged.hex`.
 ## Power behavior
 
 - Battery percentage is calibrated as 4.2 V full and 3.3 V empty. IP5306 status is displayed as `BAT`, `CHG`, or `FULL`; a charging battery at 100% and at least 4.18 V is shown as full.
-- The IP5306 keepalive pulse stays enabled while the firmware is in BLE or USB mode so the power module does not shut down under light load.
+- IP5306 is configured over I2C to keep boost output enabled when VIN is removed. The MCU also drives the IP5306 KEY/wakeup line as an active-low open-drain pulse every 15 seconds as a light-load keepalive fallback.
 - The firmware does not use System OFF or deep sleep. After about 60 seconds without key activity, matrix scanning enters a shallow idle state and arms column GPIO interrupts. Any key press wakes the main loop and restores the 5 ms active scan interval.
 - During shallow idle, the display backlight is turned off, display blanking is enabled, RGB status uses low-brightness breathing, LVGL runs at a reduced tick rate, and battery ADC sampling slows from 30 seconds to 120 seconds.
 - BLE and USB links are kept alive during idle. BLE connections request a modest idle-friendly connection interval after connecting, and MODE switching releases all pressed keys before changing the active HID transport to avoid stuck keys.

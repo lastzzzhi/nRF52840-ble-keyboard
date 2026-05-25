@@ -163,6 +163,19 @@ static bool ble_has_connection(void)
 	return false;
 }
 
+static size_t ble_connection_count(void)
+{
+	size_t count = 0;
+
+	for (size_t i = 0; i < ARRAY_SIZE(conn_mode); i++) {
+		if (conn_mode[i].conn != NULL) {
+			count++;
+		}
+	}
+
+	return count;
+}
+
 static void advertising_start(bool slow)
 {
 	int err;
@@ -176,7 +189,8 @@ static void advertising_start(bool slow)
 				       BT_GAP_ADV_FAST_INT_MAX_2,
 				       NULL);
 
-	if (!bt_ready || current_mode != APP_MODE_BLE || adv_active) {
+	if (!bt_ready || current_mode != APP_MODE_BLE || adv_active ||
+	    ble_connection_count() >= ARRAY_SIZE(conn_mode)) {
 		return;
 	}
 
@@ -293,6 +307,11 @@ static void connected(struct bt_conn *conn, uint8_t err)
 			conn_mode[i].in_boot_mode = false;
 			break;
 		}
+	}
+
+	if (ble_connection_count() < ARRAY_SIZE(conn_mode)) {
+		LOG_INF("Bluetooth still has a free connection slot; advertising resumes");
+		advertising_resume_window();
 	}
 }
 
