@@ -752,10 +752,19 @@ void hid_transport_set_mode(enum app_mode mode)
 
 void hid_transport_tick(void)
 {
+	int64_t now = k_uptime_get();
+
 	hid_tx_process();
 
-	if (current_mode == APP_MODE_BLE && bt_ready && !ble_has_connection() &&
-	    adv_active && !adv_slow && k_uptime_get() >= adv_fast_until_ms) {
+	if (current_mode != APP_MODE_BLE || !bt_ready) {
+		return;
+	}
+
+	if (!adv_active && ble_connection_count() < ARRAY_SIZE(conn_mode)) {
+		advertising_resume_window();
+	}
+
+	if (adv_active && !adv_slow && now >= adv_fast_until_ms) {
 		advertising_restart(true);
 	}
 }
