@@ -187,3 +187,18 @@ void keyboard_matrix_wakeup_disarm(void)
 	wakeup_cb = NULL;
 	LOG_DBG("Keyboard wakeup disarmed");
 }
+
+bool keyboard_matrix_wakeup_pressed(void)
+{
+	if (!wakeup_armed) {
+		return false;
+	}
+
+	for (size_t c = 0; c < ARRAY_SIZE(cols); c++) {
+		if (gpio_pin_get_dt(&cols[c]) > 0) {
+			return true;
+		}
+	}
+
+	return false;
+}

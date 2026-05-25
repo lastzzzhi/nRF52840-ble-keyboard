@@ -1,0 +1,13 @@
+#ifndef HOST_BLE_H
+#define HOST_BLE_H
+
+#include <zephyr/bluetooth/uuid.h>
+
+#define HOST_BLE_SERVICE_UUID_VAL \
+	BT_UUID_128_ENCODE(0x8f420000, 0x7b6a, 0x4f6a, 0x9a52, 0x4d41494b4244)
+#define HOST_BLE_REQUEST_UUID_VAL \
+	BT_UUID_128_ENCODE(0x8f420001, 0x7b6a, 0x4f6a, 0x9a52, 0x4d41494b4244)
+#define HOST_BLE_RESPONSE_UUID_VAL \
+	BT_UUID_128_ENCODE(0x8f420002, 0x7b6a, 0x4f6a, 0x9a52, 0x4d41494b4244)
+
+#endif

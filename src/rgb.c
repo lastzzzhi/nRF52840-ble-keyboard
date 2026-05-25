@@ -33,6 +33,14 @@ static bool low_battery;
 static bool last_state_valid;
 static int64_t next_refresh_ms;
 static int64_t recovery_until_ms;
+static struct rgb_host_config host_config = {
+	.enabled = false,
+	.r = 0,
+	.g = 24,
+	.b = 0,
+	.brightness = 100,
+	.idle_brightness = 40,
+};
 
 static uint8_t scale_channel(uint8_t value, uint8_t scale)
 {
@@ -100,10 +108,25 @@ static void rgb_render(int64_t now)
 	}
 
 	color = status_color(last_mode, last_connected, last_numlock);
+	if (host_config.enabled) {
+		color.r = host_config.r;
+		color.g = host_config.g;
+		color.b = host_config.b;
+	}
 	if (low_battery) {
 		color.r = scale_channel(color.r, RGB_LOW_BATTERY_SCALE);
 		color.g = scale_channel(color.g, RGB_LOW_BATTERY_SCALE);
 		color.b = scale_channel(color.b, RGB_LOW_BATTERY_SCALE);
+	}
+	if (host_config.enabled) {
+		uint8_t brightness = host_config.brightness;
+
+		if (last_idle && host_config.idle_brightness < brightness) {
+			brightness = host_config.idle_brightness;
+		}
+		color.r = scale_channel(color.r, brightness);
+		color.g = scale_channel(color.g, brightness);
+		color.b = scale_channel(color.b, brightness);
 	}
 	if (last_idle) {
 		uint8_t scale = idle_breath_scale(now);
@@ -163,6 +186,8 @@ void rgb_show_status(enum app_mode mode, bool connected, bool numlock, bool idle
 		return;
 	}
 
+	LOG_INF("RGB status mode=%d connected=%d numlock=%d idle=%d",
+		mode, connected, numlock, idle);
 	rgb_render(now);
 }
 
@@ -176,11 +201,35 @@ void rgb_set_low_battery(bool low_battery_enabled)
 	rgb_render(k_uptime_get());
 }
 
+void rgb_set_host_config(const struct rgb_host_config *config)
+{
+	if (config == NULL) {
+		return;
+	}
+
+	host_config = *config;
+	if (host_config.brightness > 100) {
+		host_config.brightness = 100;
+	}
+	if (host_config.idle_brightness > 100) {
+		host_config.idle_brightness = 100;
+	}
+	rgb_render(k_uptime_get());
+}
+
+void rgb_get_host_config(struct rgb_host_config *config)
+{
+	if (config != NULL) {
+		*config = host_config;
+	}
+}
+
 void rgb_recover_after_power_event(void)
 {
 	int64_t now = k_uptime_get();
 
 	recovery_until_ms = now + RGB_RECOVERY_WINDOW_MS;
+	LOG_INF("RGB recovery after power event");
 	rgb_render(now);
 }
 

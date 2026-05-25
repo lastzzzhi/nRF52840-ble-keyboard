@@ -33,9 +33,10 @@ The generated merged HEX file is `build\merged.hex`.
 - EC11 rotation sends Consumer Control volume up/down; pressing the encoder switch sends mute.
 - USB mode shows green RGB status and sends only USB HID reports.
 - BLE mode shows blue RGB status, advertises as `AI_BLE_KEYBOARD`, stores bonds in NVS, and sends only BLE HID reports.
-- BLE advertising stays fast for 60 seconds after entering BLE mode, then falls back to slow advertising if no host is connected.
+- BLE advertising stays fast for 300 seconds after entering BLE mode, then falls back to slow advertising if no host is connected.
 - The ST7789V status display uses a 320 x 172 active area with a 34-line Y offset. It shows mode, connection state, battery percentage/voltage, IP5306 charge state, NumLock state, and date/time.
-- Date/time currently uses the build timestamp plus device uptime. It will drift after power-off until a future host-side time sync tool is added.
+- Date/time uses host-synchronized Unix time when the host tool sends `SYNC_TIME`; otherwise it falls back to the build timestamp plus device uptime.
+- A 64-byte host-control protocol is available over USB HID Feature Report and over a custom BLE GATT service. See `docs/host_protocol.md`.
 
 ## Power behavior
 
@@ -48,7 +49,7 @@ The generated merged HEX file is `build\merged.hex`.
 
 ## Runtime logs
 
-- Useful `LOG_INF` lines remain for startup, mode changes, BLE connection state, matrix idle, and key wakeup.
+- Useful `LOG_INF` lines remain for startup, mode changes, BLE connection state, matrix idle, key wakeup, display resume/idle, and RGB recovery.
 - Per-key scan logs and encoder bring-up candidates are `LOG_DBG` to keep RTT readable during normal use. Raise the log level or temporarily change those lines back to `LOG_INF` when debugging key mapping.
 
 ## Bring-up checklist
@@ -70,7 +71,9 @@ The generated merged HEX file is `build\merged.hex`.
 - Encoder rotation sends volume up/down; encoder press sends mute.
 - Battery voltage, percent, and `BAT`/`CHG`/`FULL` display correctly.
 - After 60 seconds idle, the screen blanks, RGB breathes at low brightness, and a key press wakes the keyboard promptly.
-- In BLE mode with no host connected, fast advertising changes to slow advertising after 60 seconds.
+- In BLE mode with no host connected, fast advertising changes to slow advertising after 300 seconds.
+- USB host-control `PING`, `GET_STATUS`, `SYNC_TIME`, `GET_RGB`, and `SET_RGB` work through `tools/host_test.py`.
+- BLE host-control service can be discovered by UUID `8f420000-7b6a-4f6a-9a52-4d41494b4244`; Request is `...0001...`, Response is `...0002...`.
 
 ## Hardware notes
 

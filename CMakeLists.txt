@@ -11,6 +11,8 @@ target_include_directories(app PRIVATE src)
 target_sources(app PRIVATE
   src/display.c
   src/hid_transport.c
+  src/host_ble.c
+  src/host_protocol.c
   src/keymap.c
   src/key_wakeup_pm.c
   src/keyboard_matrix.c

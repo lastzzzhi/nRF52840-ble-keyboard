@@ -20,6 +20,8 @@
 #include <zephyr/usb/class/usb_hid.h>
 #include <zephyr/usb/usb_device.h>
 
+#include "host_protocol.h"
+#include "host_ble.h"
 #include "power.h"
 
 LOG_MODULE_REGISTER(hid_transport, LOG_LEVEL_INF);
@@ -34,10 +36,11 @@ LOG_MODULE_REGISTER(hid_transport, LOG_LEVEL_INF);
 #define INPUT_REP_KEYS_REF_ID 1
 #define INPUT_REP_CONSUMER_REF_ID 2
 #define OUTPUT_REP_KEYS_REF_ID 1
+#define FEATURE_REP_HOST_REF_ID HOST_REPORT_ID
 #define OUTPUT_REPORT_MAX_LEN 1
 #define CONSUMER_REPORT_SIZE 1
 /* Advertise quickly for initial pairing, then fall back to slower intervals. */
-#define BLE_FAST_ADV_TIMEOUT_MS 60000
+#define BLE_FAST_ADV_TIMEOUT_MS 300000
 #define BLE_ADV_SLOW_INT_MIN 0x0c80
 #define BLE_ADV_SLOW_INT_MAX 0x1000
 /* Request a modest idle-friendly BLE connection interval after connection. */
@@ -49,6 +52,7 @@ LOG_MODULE_REGISTER(hid_transport, LOG_LEVEL_INF);
 #define CONSUMER_PULSE_MS 10
 #define HID_RETRY_MS 5
 #define USB_HID_REPORT_TYPE_OUTPUT 2
+#define USB_HID_REPORT_TYPE_FEATURE 3
 #define HID_LED_NUMLOCK BIT(0)
 
 BT_HIDS_DEF(hids_obj, OUTPUT_REPORT_MAX_LEN, HID_KEYBOARD_REPORT_SIZE);
@@ -111,16 +115,27 @@ static const uint8_t report_map[] = {
 	0x15, 0x00, 0x25, 0x01, 0x09, 0xe2, 0x09, 0xe9, 0x09, 0xea,
 	0x75, 0x01, 0x95, 0x03, 0x81, 0x02, 0x75, 0x05,
 	0x95, 0x01, 0x81, 0x03, 0xc0,
+
+	/* Vendor feature report, ID 3, 63-byte payload for host control. */
+	0x06, 0x00, 0xff, 0x09, 0x01, 0xa1, 0x01,
+	0x85, FEATURE_REP_HOST_REF_ID,
+	0x15, 0x00, 0x26, 0xff, 0x00,
+	0x75, 0x08, 0x95, HOST_REPORT_SIZE - 1,
+	0x09, 0x01, 0xb1, 0x02, 0xc0,
 };
 
 static const struct bt_data ad[] = {
+	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+	BT_DATA_BYTES(BT_DATA_UUID16_ALL, BT_UUID_16_ENCODE(BT_UUID_HIDS_VAL),
+					  BT_UUID_16_ENCODE(BT_UUID_BAS_VAL)),
+	BT_DATA_BYTES(BT_DATA_UUID128_ALL, HOST_BLE_SERVICE_UUID_VAL),
+};
+
+static const struct bt_data sd[] = {
 	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
 	BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE,
 		      (CONFIG_BT_DEVICE_APPEARANCE >> 0) & 0xff,
 		      (CONFIG_BT_DEVICE_APPEARANCE >> 8) & 0xff),
-	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-	BT_DATA_BYTES(BT_DATA_UUID16_ALL, BT_UUID_16_ENCODE(BT_UUID_HIDS_VAL),
-					  BT_UUID_16_ENCODE(BT_UUID_BAS_VAL)),
 };
 
 static uint8_t consumer_usage_to_bits(uint16_t usage)
@@ -165,7 +180,7 @@ static void advertising_start(bool slow)
 		return;
 	}
 
-	err = bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), NULL, 0);
+	err = bt_le_adv_start(adv_param, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
 	if (err == -EALREADY) {
 		adv_active = true;
 		return;
@@ -201,6 +216,7 @@ static void advertising_restart(bool slow)
 
 static void advertising_begin_fast_window(void)
 {
+	power_ip5306_keepalive_kick();
 	adv_fast_until_ms = k_uptime_get() + BLE_FAST_ADV_TIMEOUT_MS;
 	advertising_restart(false);
 }
@@ -248,6 +264,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	}
 
 	LOG_INF("Bluetooth connected");
+	power_ip5306_keepalive_kick();
 	adv_active = false;
 
 	if (force_repair_next) {
@@ -282,6 +299,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
 	LOG_INF("Bluetooth disconnected: 0x%02x", reason);
+	power_ip5306_keepalive_kick();
 	(void)bt_hids_disconnected(&hids_obj, conn);
 
 	for (size_t i = 0; i < ARRAY_SIZE(conn_mode); i++) {
@@ -513,8 +531,27 @@ static int usb_set_report_cb(const struct device *dev,
 {
 	uint8_t report_type = (setup->wValue >> 8) & 0xff;
 	uint8_t report_id = setup->wValue & 0xff;
+	static uint8_t host_set_buf[HOST_REPORT_SIZE];
 
 	ARG_UNUSED(dev);
+
+	if (report_type == USB_HID_REPORT_TYPE_FEATURE &&
+	    report_id == FEATURE_REP_HOST_REF_ID) {
+		if (len == NULL || data == NULL || *data == NULL ||
+		    *len <= 0 || *len > HOST_REPORT_SIZE) {
+			return -ENOTSUP;
+		}
+
+		memset(host_set_buf, 0, sizeof(host_set_buf));
+		if ((*data)[0] == FEATURE_REP_HOST_REF_ID) {
+			memcpy(host_set_buf, *data, *len);
+		} else {
+			host_set_buf[0] = FEATURE_REP_HOST_REF_ID;
+			memcpy(&host_set_buf[1], *data,
+			       MIN((int32_t)(HOST_REPORT_SIZE - 1), *len));
+		}
+		return host_protocol_set_report(host_set_buf, HOST_REPORT_SIZE);
+	}
 
 	if (report_type != USB_HID_REPORT_TYPE_OUTPUT ||
 	    (report_id != 0 && report_id != OUTPUT_REP_KEYS_REF_ID) ||
@@ -532,6 +569,33 @@ static int usb_set_report_cb(const struct device *dev,
 	return 0;
 }
 
+static int usb_get_report_cb(const struct device *dev,
+			     struct usb_setup_packet *setup,
+			     int32_t *len, uint8_t **data)
+{
+	uint8_t report_type = (setup->wValue >> 8) & 0xff;
+	uint8_t report_id = setup->wValue & 0xff;
+	static uint8_t host_get_buf[HOST_REPORT_SIZE];
+	int ret;
+
+	ARG_UNUSED(dev);
+
+	if (report_type != USB_HID_REPORT_TYPE_FEATURE ||
+	    report_id != FEATURE_REP_HOST_REF_ID ||
+	    len == NULL || data == NULL) {
+		return -ENOTSUP;
+	}
+
+	ret = host_protocol_get_report(host_get_buf, sizeof(host_get_buf));
+	if (ret < 0) {
+		return ret;
+	}
+
+	*data = host_get_buf;
+	*len = MIN((int32_t)setup->wLength, (int32_t)sizeof(host_get_buf));
+	return 0;
+}
+
 static void usb_protocol_change_cb(const struct device *dev, uint8_t protocol)
 {
 	ARG_UNUSED(dev);
@@ -542,6 +606,7 @@ static void usb_protocol_change_cb(const struct device *dev, uint8_t protocol)
 }
 
 static const struct hid_ops usb_ops = {
+	.get_report = usb_get_report_cb,
 	.set_report = usb_set_report_cb,
 	.protocol_change = usb_protocol_change_cb,
 	.int_in_ready = usb_int_in_ready_cb,
@@ -623,6 +688,7 @@ int hid_transport_init(enum app_mode initial_mode)
 	int err;
 
 	current_mode = initial_mode;
+	host_protocol_init();
 	k_sem_init(&usb_ep_sem, 0, 1);
 	k_mutex_init(&tx_lock);
 	k_work_init_delayable(&tx_work, hid_tx_work_handler);

@@ -12,6 +12,7 @@
 #include "app_types.h"
 #include "display.h"
 #include "hid_transport.h"
+#include "host_protocol.h"
 #include "keyboard_matrix.h"
 #include "keymap.h"
 #include "key_wakeup_pm.h"
@@ -427,6 +428,7 @@ int main(void)
 	LOG_INF("AI BLE Keyboard starting");
 
 	(void)power_init();
+	power_ip5306_keepalive_kick();
 	(void)app_display_init();
 	(void)rgb_init();
 	keymap_init();
@@ -483,7 +485,8 @@ int main(void)
 		power_set_idle(idle_now);
 		if (idle_now != last_idle) {
 			rgb_show_status(mode, hid_transport_connected(),
-					keymap_numlock_enabled(), idle_now);
+					keymap_numlock_enabled(),
+					idle_now);
 			last_idle = idle_now;
 		}
 
@@ -511,9 +514,17 @@ int main(void)
 		hid_transport_tick();
 		connected_now = hid_transport_connected();
 		if (connected_now != last_connected) {
+			LOG_INF("Transport connection changed: %d -> %d",
+				last_connected, connected_now);
+			key_wakeup_pm_note_activity_reason(now,
+							   "Transport activity");
+			idle_now = false;
+			app_display_set_idle(false);
+			power_set_idle(false);
+			last_idle = false;
 			power_ip5306_keepalive_kick();
 			rgb_show_status(mode, connected_now,
-					keymap_numlock_enabled(), idle_now);
+					keymap_numlock_enabled(), false);
 			rgb_recover_after_power_event();
 			next_status = 0;
 			last_connected = connected_now;
@@ -528,6 +539,7 @@ int main(void)
 			int battery_mv = power_get_battery_mv();
 			enum power_charge_state charge_state = power_get_charge_state();
 			bool connected = hid_transport_connected();
+			struct host_status_snapshot host_status;
 
 			if (charge_state == POWER_CHARGE_CHARGING &&
 			    battery >= 100 && battery_mv >= 4180) {
@@ -535,6 +547,14 @@ int main(void)
 			}
 
 			rgb_set_low_battery(battery >= 0 && battery < 20);
+			host_status.mode = mode;
+			host_status.connected = connected;
+			host_status.numlock = keymap_numlock_enabled();
+			host_status.idle = idle_now;
+			host_status.battery_percent = battery;
+			host_status.battery_mv = battery_mv;
+			host_status.charge_state = charge_state;
+			host_protocol_update_status(&host_status);
 			display_update_status(mode, battery, battery_mv, charge_state,
 					      connected, keymap_numlock_enabled());
 			rgb_show_status(mode, connected, keymap_numlock_enabled(),

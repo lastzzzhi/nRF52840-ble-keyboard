@@ -72,6 +72,13 @@ void key_wakeup_pm_update(enum app_mode mode, int64_t now)
 	}
 
 	if (atomic_get(&wake_requested) != 0) {
+		LOG_INF("Keyboard wake IRQ");
+		key_wakeup_pm_note_activity(now);
+		return;
+	}
+
+	if (idle && keyboard_matrix_wakeup_pressed()) {
+		LOG_INF("Keyboard wake poll");
 		key_wakeup_pm_note_activity(now);
 		return;
 	}

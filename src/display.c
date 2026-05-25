@@ -58,6 +58,8 @@ static bool display_ready;
 static bool display_idle;
 static int64_t next_display_idle_tick_ms;
 static int64_t build_epoch_seconds;
+static int64_t host_epoch_seconds = -1;
+static int64_t host_epoch_uptime_seconds;
 static int last_display_mode = -1;
 static int last_display_battery = -999;
 static int last_display_battery_mv = -999;
@@ -448,7 +450,12 @@ void display_update_status(enum app_mode mode, int battery_percent,
 		battery_mv = -1;
 	}
 
-	now = build_epoch_seconds + (k_uptime_get() / 1000);
+	if (host_epoch_seconds >= 0) {
+		now = host_epoch_seconds +
+		      ((k_uptime_get() / 1000) - host_epoch_uptime_seconds);
+	} else {
+		now = build_epoch_seconds + (k_uptime_get() / 1000);
+	}
 	epoch_to_date(now, &year, &month, &day, &hour, &minute, &second);
 	time_changed = hour != last_display_hour ||
 		       minute != last_display_minute ||
@@ -544,6 +551,19 @@ void display_update_status(enum app_mode mode, int battery_percent,
 	lv_timer_handler();
 }
 
+void display_set_host_time(uint32_t unix_time, int16_t timezone_offset_min,
+			   uint8_t flags)
+{
+	ARG_UNUSED(flags);
+
+	host_epoch_seconds = (int64_t)unix_time +
+			     ((int64_t)timezone_offset_min * 60);
+	host_epoch_uptime_seconds = k_uptime_get() / 1000;
+	last_display_hour = -1;
+	last_display_minute = -1;
+	last_display_day = -1;
+}
+
 void app_display_tick(void)
 {
 	int64_t now;
@@ -573,6 +593,7 @@ void app_display_set_idle(bool idle)
 	}
 
 	display_idle = idle;
+	LOG_INF("Display %s", idle ? "idle" : "resume");
 	screen_power_set(!idle);
 	if (display_ready) {
 		next_display_idle_tick_ms = 0;
