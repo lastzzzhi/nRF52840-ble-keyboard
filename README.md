@@ -1,80 +1,255 @@
-# AI BLE Keyboard
+# AI BLE Keyboard 蓝牙数字小键盘
 
-NCS 3.2.3 project for the E73-2G4M08S1C / nRF52840 numeric keypad board.
+这是一个基于 **nRF Connect SDK 3.2.3** 的 nRF52840 蓝牙/USB 双模数字小键盘固件工程。目标板为：
 
-## Build in VS Code
-
-1. Open this folder in VS Code.
-2. Select the nRF Connect SDK installation at `D:\ncs\v3.2.3`.
-3. Add a build configuration with board target `ai_ble_keyboard/nrf52840`.
-4. Build and flash with the nRF Connect extension.
-
-Validated command line build used for this workspace:
-
-```powershell
-$env:Path='D:\ncs\toolchains\fd21892d0f\opt\bin;D:\ncs\toolchains\fd21892d0f\mingw64\bin;' + $env:Path
-$env:ZEPHYR_BASE='D:\ncs\v3.2.3\zephyr'
-$env:ZEPHYR_TOOLCHAIN_VARIANT='zephyr'
-$env:ZEPHYR_SDK_INSTALL_DIR='D:\ncs\toolchains\fd21892d0f\opt\zephyr-sdk'
-$mods='D:/ncs/v3.2.3/nrf;D:/ncs/v3.2.3/modules/hal/nordic;D:/ncs/v3.2.3/modules/debug/segger;D:/ncs/v3.2.3/modules/hal/cmsis;D:/ncs/v3.2.3/modules/hal/cmsis_6;D:/ncs/v3.2.3/nrfxlib;D:/ncs/v3.2.3/modules/crypto/mbedtls;D:/ncs/v3.2.3/modules/crypto/oberon-psa-crypto;D:/ncs/v3.2.3/modules/lib/zcbor'
-cmake -B build -S . -GNinja -DBOARD=ai_ble_keyboard/nrf52840 -DBOARD_ROOT=$PWD -DDTS_ROOT=$PWD "-DZEPHYR_MODULES:STRING=$mods" -DUSER_CACHE_DIR="$PWD\.zephyr_cache"
-ninja -C build
+```text
+ai_ble_keyboard/nrf52840
 ```
 
-The generated merged HEX file is `build\merged.hex`.
+硬件原理图来源：
 
-## Current firmware behavior
+```text
+d:\sz0107课件\05_ble_keyboard\260107_SZ\尚硅谷嵌入式项目之蓝牙键盘\2.资料\1.原理图\SCH_蓝牙小键盘_2026-03-28.pdf
+```
 
-- `MODE` high: BLE HID keyboard mode.
-- `MODE` low: USB HID keyboard mode.
-- The hardware OFF position is expected to remove or gate system power. The firmware still has an internal `APP_MODE_OFF` state for future boards that expose OFF as a readable GPIO.
-- Matrix scanning uses 6 rows x 4 columns with active-low row scanning and pulled-up columns.
-- NumLock toggles the local numeric/navigation layer and is also sent to the host.
-- EC11 rotation sends Consumer Control volume up/down; pressing the encoder switch sends mute.
-- USB mode shows green RGB status and sends only USB HID reports.
-- BLE mode shows blue RGB status, advertises as `AI_BLE_KEYBOARD`, stores bonds in NVS, and sends only BLE HID reports.
-- BLE advertising stays fast for 300 seconds after entering BLE mode, then falls back to slow advertising if no host is connected.
-- The ST7789V status display uses a 320 x 172 active area with a 34-line Y offset. It shows mode, connection state, battery percentage/voltage, IP5306 charge state, NumLock state, and date/time.
-- Date/time uses host-synchronized Unix time when the host tool sends `SYNC_TIME`; otherwise it falls back to the build timestamp plus device uptime.
-- A 64-byte host-control protocol is available over USB HID Feature Report and over a custom BLE GATT service. See `docs/host_protocol.md`.
+原理图文本抽取文件为 [schematic_text.txt](schematic_text.txt)。硬件引脚、矩阵、IP5306 电源逻辑整理见 [docs/hardware.md](docs/hardware.md)。
 
-## Power behavior
+## 当前功能
 
-- Battery percentage is calibrated as 4.2 V full and 3.3 V empty. IP5306 status is displayed as `BAT`, `CHG`, or `FULL`; a charging battery at 100% and at least 4.18 V is shown as full.
-- IP5306 is configured over I2C to keep boost output enabled when VIN is removed. The MCU also drives the IP5306 KEY/wakeup line as an active-low open-drain pulse every 15 seconds as a light-load keepalive fallback.
-- The firmware does not use System OFF or deep sleep. After about 60 seconds without key activity, matrix scanning enters a shallow idle state and arms column GPIO interrupts. Any key press wakes the main loop and restores the 5 ms active scan interval.
-- During shallow idle, the display backlight is turned off, display blanking is enabled, RGB status uses low-brightness breathing, LVGL runs at a reduced tick rate, and battery ADC sampling slows from 30 seconds to 120 seconds.
-- BLE and USB links are kept alive during idle. BLE connections request a modest idle-friendly connection interval after connecting, and MODE switching releases all pressed keys before changing the active HID transport to avoid stuck keys.
-- RGB brightness is reduced when battery level is below 20%.
+- USB HID Keyboard，Windows 可枚举为键盘。
+- BLE HID Keyboard，设备名 `AI_BLE_KEYBOARD`。
+- 6 x 4 矩阵数字小键盘。
+- NumLock 本地层切换：数字层 / 导航层。
+- EC11 编码器：顺时针音量加，逆时针音量减，按下静音。
+- WS2812 RGB 灯效。
+- ST7789V 彩屏状态显示，屏幕物理分辨率 320 x 240，当前有效显示区域为 320 x 172，Y 偏移 34。
+- IP5306-I2C 电源/电池状态读取与轻载保活。
+- 低功耗浅空闲：不进入 System OFF，不关闭 BLE/USB 链路。
+- 上位机控制协议：
+  - USB HID Feature Report
+  - BLE 自定义 GATT Service
 
-## Runtime logs
+## 构建和烧录
 
-- Useful `LOG_INF` lines remain for startup, mode changes, BLE connection state, matrix idle, key wakeup, display resume/idle, and RGB recovery.
-- Per-key scan logs and encoder bring-up candidates are `LOG_DBG` to keep RTT readable during normal use. Raise the log level or temporarily change those lines back to `LOG_INF` when debugging key mapping.
+推荐使用 VS Code 的 nRF Connect 插件：
 
-## Bring-up checklist
+1. 打开本工程目录。
+2. SDK 选择 `D:\ncs\v3.2.3`。
+3. 添加 Build Configuration。
+4. Board 选择 `ai_ble_keyboard/nrf52840`。
+5. Build 后 Flash。
 
-- BLE mode: pair once, reboot the keyboard, confirm it reconnects without repeated security failures.
-- USB mode: confirm Windows shows an HID keyboard and keypad input works in a text editor.
-- Idle wakeup: wait for `Keyboard idle: matrix wakeup armed`, press any key, and confirm `Keyboard wakeup: active scan`.
-- MODE switch: confirm USB disconnects BLE intentionally and BLE starts advertising again when switched back.
-- Power: run on battery for at least 30 minutes and confirm the IP5306 does not shut down under idle load.
+当前工作区验证过的命令行构建方式：
 
-## Final validation checklist
+```powershell
+& 'D:\ncs\toolchains\fd21892d0f\opt\bin\ninja.exe' -C build\AI_BLE_KEYBOARD
+```
 
-- USB enumerates as an HID keyboard and numeric keypad input works.
-- USB Boot Protocol and Report Protocol both continue to send keyboard reports.
-- BLE can be discovered, paired, encrypted, disconnected, and reconnected.
-- BLE HID keyboard reports and Consumer Control volume/mute reports work.
-- MODE switching releases pressed keys and does not send reports to the old transport.
-- NumLock toggles the local numeric/navigation layer and updates the display/RGB state.
-- Encoder rotation sends volume up/down; encoder press sends mute.
-- Battery voltage, percent, and `BAT`/`CHG`/`FULL` display correctly.
-- After 60 seconds idle, the screen blanks, RGB breathes at low brightness, and a key press wakes the keyboard promptly.
-- In BLE mode with no host connected, fast advertising changes to slow advertising after 300 seconds.
-- USB host-control `PING`, `GET_STATUS`, `SYNC_TIME`, `GET_RGB`, and `SET_RGB` work through `tools/host_test.py`.
-- BLE host-control service can be discovered by UUID `8f420000-7b6a-4f6a-9a52-4d41494b4244`; Request is `...0001...`, Response is `...0002...`.
+生成的固件位于：
 
-## Hardware notes
+```text
+build\AI_BLE_KEYBOARD\zephyr\zephyr.elf
+build\AI_BLE_KEYBOARD\zephyr\zephyr.hex
+```
 
-The pin mapping is derived from `SCH_蓝牙小键盘_2026-03-28.pdf` and `E73-2G4M08S1C_UserManual_CN_v2.4.pdf`. If a bring-up test shows a swapped key row/column or an inverted MODE state, update `boards/me/ai_ble_keyboard/ai_ble_keyboard.dts`; application code reads all board pins from devicetree.
+如果用 VS Code 插件烧录，日志中看到类似下面内容表示烧录成功：
+
+```text
+Board(s) with serial number(s) ... flashed successfully.
+```
+
+## USB 信息
+
+USB 设备信息：
+
+```text
+VID: 0x1915
+PID: 0xA107
+Product: AI BLE Keyboard
+Manufacturer: ZEPHYR
+```
+
+USB HID 集合：
+
+| 用途 | Usage Page | Usage | 说明 |
+| --- | ---: | ---: | --- |
+| 键盘 | `0x0001` | `0x0006` | 系统键盘输入 |
+| Consumer Control | `0x000c` | `0x0001` | 音量/静音 |
+| 上位机控制 | `0xff00` | `0x0001` | 64 字节 Feature Report |
+
+上位机测试脚本：
+
+```powershell
+python tools\host_test.py list
+python tools\host_test.py ping
+python tools\host_test.py status
+python tools\host_test.py fw
+python tools\host_test.py sync-time
+python tools\host_test.py get-rgb
+python tools\host_test.py set-rgb --enable 1 --rgb 0 24 0 --brightness 80
+```
+
+依赖：
+
+```powershell
+pip install hidapi
+```
+
+## BLE 信息
+
+BLE 设备名：
+
+```text
+AI_BLE_KEYBOARD
+```
+
+BLE 服务：
+
+| 服务 | UUID |
+| --- | --- |
+| HID over GATT | 标准 HOGP |
+| Battery Service | 标准 BAS |
+| 上位机控制 Service | `8f420000-7b6a-4f6a-9a52-4d41494b4244` |
+
+自定义 GATT 特征：
+
+| Characteristic | UUID | 方向 |
+| --- | --- | --- |
+| Request | `8f420001-7b6a-4f6a-9a52-4d41494b4244` | 上位机 Write 64 字节 |
+| Response | `8f420002-7b6a-4f6a-9a52-4d41494b4244` | 固件 Notify/Read 64 字节 |
+
+当前 BLE 连接/广播策略：
+
+- 最大 BLE 连接数：2。
+- HID 客户端数：2。
+- 切到 BLE 模式后开启 300 秒快广播窗口。
+- 快广播窗口结束后，如果仍未连接，会进入慢广播以降低功耗。
+- BLE HID 连接成功后，如果还有空连接槽，会继续恢复广播，供上位机连接自定义 GATT 控制链路。
+- 切到 USB 模式时停止 BLE 广播，并主动断开 BLE 连接。
+
+协议细节见 [docs/host_protocol.md](docs/host_protocol.md)。
+
+## 按键布局
+
+矩阵为 6 行 4 列。第一行第四列是 EC11 旋钮按键，不作为普通矩阵键输出，按下发送静音。
+
+数字层：
+
+```text
+Esc        --       --       EC11
+NumLock   /        *        -
+7         8        9        +
+4         5        6        +
+1         2        3        +
+0         .        --       Enter
+```
+
+导航层：
+
+```text
+Esc        --       --       EC11
+NumLock   /        *        -
+Home      Up       PgUp     +
+Left      5        Right    +
+End       Down     PgDn     +
+Ins       Del      --       Enter
+```
+
+## RGB 状态
+
+默认灯光状态：
+
+| 状态 | 颜色 |
+| --- | --- |
+| USB 已连接 | 绿色 |
+| USB 未连接 | 红色 |
+| BLE 已连接 | 蓝色偏青 |
+| BLE 未连接/搜索 | 蓝色 |
+| NumLock 关闭，也就是导航层 | 橙色 |
+| 电量低于 20% | 在当前颜色基础上降低亮度 |
+| 空闲 | 当前颜色低亮度呼吸 |
+
+上位机可以通过 `SET_RGB` 临时覆盖颜色和亮度。
+
+## 屏幕显示
+
+屏幕型号按 ST7789V 配置：
+
+- 物理分辨率：320 x 240
+- 当前有效显示区域：320 x 172
+- Y 偏移：34
+
+显示内容：
+
+- 当前时间和日期
+- USB/BLE 模式
+- 连接状态
+- NumLock 层状态
+- 电池百分比
+- 电池供电/充电/满电状态
+
+时间来源：
+
+- 上位机发送 `SYNC_TIME` 后使用上位机同步时间。
+- 未同步时使用固件构建时间加设备运行时间。
+- 设备完全断电后没有 RTC 备份电源，时间不会长期保持准确。
+
+## 电源和低功耗
+
+电池电量：
+
+- 4.2 V 映射为 100%。
+- 3.3 V 映射为 0%。
+- ADC 通过原理图中的 `BAT_ADC` 电量检测电路读取。
+- 读取前拉高 `BAT_ADC_EN`，采样后关闭。
+
+IP5306 逻辑：
+
+- 固件启动时通过 I2C 配置 IP5306，使 VIN 拔出后继续保持 Boost 输出。
+- `P0.22` 连接 IP5306 唤醒/KEY 相关网络，当前配置为低有效开漏。
+- MCU 每 15 秒拉低 KEY/wakeup 线 300 ms，作为轻载保活兜底。
+- 这个修复用于避免慢拔 USB 时 IP5306 误判轻载/按键状态后关机。
+
+低功耗策略：
+
+- 固件不使用 System OFF。
+- 约 60 秒无按键后进入浅空闲。
+- 浅空闲时矩阵扫描降频并打开列 GPIO 唤醒。
+- 屏幕背光关闭，LVGL tick 降低。
+- RGB 进入低亮度呼吸。
+- BLE/USB 链路保持。
+- 任意按键唤醒后恢复主动扫描、屏幕和灯效。
+
+## 运行日志
+
+使用 RTT 查看日志。常见关键日志：
+
+```text
+AI BLE Keyboard starting
+IP5306 reg 0x00 |= ...
+IP5306 reg 0x01 |= ...
+IP5306 reg 0x20 |= ...
+Bluetooth fast advertising started
+Bluetooth connected
+USB protocol changed to Report Protocol
+Keyboard idle: matrix wakeup armed
+Keyboard wakeup: active scan
+```
+
+如果 BLE 反复连接/断开，通常优先检查电脑端旧配对记录，删除后重新配对。
+
+## 验证清单
+
+- USB 模式能在记事本输入数字、小数点、加号、回车。
+- USB NumLock LED 状态能回传到固件。
+- USB Boot Protocol / Report Protocol 切换后仍能输入。
+- BLE 模式电脑/手机能发现 `AI_BLE_KEYBOARD`。
+- BLE 能配对、加密连接、断开后重连。
+- BLE 键盘输入正常。
+- BLE 旋钮音量/静音正常。
+- BLE Battery Service 可见。
+- 上位机 USB 控制通道 `PING / GET_STATUS / SYNC_TIME / GET_RGB / SET_RGB` 正常。
+- 上位机 BLE GATT 控制通道能发现自定义 Service 并收发 64 字节协议包。
+- 切换 USB/BLE 模式时旧通道按键会释放，不粘键。
+- 电池供电下慢拔 USB 不再黑屏掉电。
+- 空闲后按键能唤醒屏幕和灯效。
