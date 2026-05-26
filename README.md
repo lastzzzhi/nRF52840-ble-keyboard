@@ -9,10 +9,10 @@ ai_ble_keyboard/nrf52840
 硬件原理图来源：
 
 ```text
-d:\sz0107课件\05_ble_keyboard\260107_SZ\尚硅谷嵌入式项目之蓝牙键盘\2.资料\1.原理图\SCH_蓝牙小键盘_2026-03-28.pdf
+SCH_蓝牙小键盘_2026-03-28.pdf
 ```
 
-原理图文本抽取文件为 [schematic_text.txt](schematic_text.txt)。硬件引脚、矩阵、IP5306 电源逻辑整理见 [docs/hardware.md](docs/hardware.md)。
+硬件引脚、矩阵、IP5306 电源逻辑整理见 [docs/hardware.md](docs/hardware.md)。
 
 ## 当前功能
 
